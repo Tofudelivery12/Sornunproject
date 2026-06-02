@@ -19,9 +19,13 @@ export default function UnifiedDashboardPage() {
   const [showStockModal, setShowStockModal] = useState(false);
   const [stockForm, setStockForm] = useState({ product_id: '', type: 'IN', quantity: 1 });
 
-  // ✨ State ใหม่สำหรับควบคุมป็อปอัปดูรายละเอียด (Info)
+  // State สำหรับควบคุมป็อปอัปดูรายละเอียด (Info)
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
+
+  // ✨ State ใหม่: สำหรับพิมพ์ค้นหาชื่ออุปกรณ์ในหน้าต่าง รับเข้า/เบิกจ่าย สต็อกด่วน
+  const [stockProductSearch, setStockProductSearch] = useState('');
+  const [isStockDropdownOpen, setIsStockDropdownOpen] = useState(false);
 
   useEffect(() => {
     fetchInitialData();
@@ -59,7 +63,6 @@ export default function UnifiedDashboardPage() {
     setShowModal(true);
   }
 
-  // ✨ ฟังก์ชันเปิดดูรายละเอียดสินค้า
   function openInfo(product: any) {
     setSelectedProduct(product);
     setShowInfoModal(true);
@@ -121,6 +124,15 @@ export default function UnifiedDashboardPage() {
     p.sku.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // ✨ กรองสินค้าในหน้าต่างสต็อกตามคำที่พิมพ์ค้นหา
+  const filteredStockProducts = products.filter(p =>
+    p.name.toLowerCase().includes(stockProductSearch.toLowerCase()) ||
+    p.sku.toLowerCase().includes(stockProductSearch.toLowerCase())
+  );
+
+  // ✨ ค้นหาข้อมูลสินค้าตัวที่เลือกปัจจุบันเพื่อมาโชว์ในช่องกรอกข้อมูล
+  const selectedStockProductDetail = products.find(p => String(p.id) === String(stockForm.product_id));
+
   return (
     <main className="py-6 space-y-6 max-w-6xl mx-auto px-2">
       
@@ -159,6 +171,8 @@ export default function UnifiedDashboardPage() {
           <button 
             onClick={() => { 
               if(products.length > 0) { 
+                // ✨ รีเซ็ตค่าการค้นหาตอนเปิดมอดอลรับเข้า/เบิกออกสินค้า
+                setStockProductSearch('');
                 setStockForm({ product_id: String(products[0].id), type: 'IN', quantity: 1 }); 
                 setShowStockModal(true); 
               } else { 
@@ -205,7 +219,6 @@ export default function UnifiedDashboardPage() {
               return (
                 <tr key={product.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="p-4 text-center">
-                    {/* 🎯 เพิ่มปุ่ม Info มุมขวาบนของรูปในเวอร์ชัน Desktop */}
                     <div className="relative w-12 h-12 mx-auto">
                       <img src={product.image_url || 'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?w=80&auto=format&fit=crop&q=60'} alt={product.name} className="w-12 h-12 object-cover rounded-lg border border-slate-200" />
                       <button 
@@ -250,7 +263,6 @@ export default function UnifiedDashboardPage() {
           return (
             <div key={product.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-3">
               <div className="flex gap-3 relative">
-                {/* 🎯 เพิ่มปุ่ม Info มุมขวาบนของรูปในเวอร์ชันมือถือ */}
                 <div className="relative w-16 h-16 flex-shrink-0">
                   <img src={product.image_url || 'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?w=80&auto=format&fit=crop&q=60'} alt={product.name} className="w-16 h-16 object-cover rounded-xl border border-slate-200 bg-slate-50" />
                   <button 
@@ -345,28 +357,76 @@ export default function UnifiedDashboardPage() {
         </div>
       )}
 
-      {/* 🟠 MODAL: ระบบรับเข้า-เบิกออกสินค้าด่วน */}
+      {/* 🟠 MODAL: ระบบรับเข้า-เบิกออกสินค้าด่วน (อัปเกรดแบบพิมพ์ชื่อค้นหาได้แล้ว ✨) */}
       {showStockModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-100">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-100 overflow-visible">
             <h3 className="text-lg font-bold text-slate-800 border-b pb-3 mb-4">🔄 หน้าทำรายการ รับเข้า / เบิกจ่ายคลัง</h3>
             <form onSubmit={handleStockAdjust} className="space-y-4 text-slate-700 text-left">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">เลือกชิ้นส่วนสินค้า</label>
-                <select 
-                  required 
-                  className="w-full border border-slate-200 bg-white rounded-xl p-2.5 text-sm outline-none font-medium text-slate-800" 
-                  value={stockForm.product_id} 
-                  onChange={e => setStockForm({...stockForm, product_id: e.target.value})}
+              
+              {/* ✨ เริ่มโซนกล่องพิมพ์ค้นหาชิ้นส่วนสินค้า */}
+              <div className="relative">
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">เลือกหรือพิมพ์ค้นหาชิ้นส่วนสินค้า *</label>
+                
+                {/* กล่อง Input สำหรับพิมพ์ค้นหาตัวเครื่อง */}
+                <div 
+                  className="w-full border border-slate-200 bg-white rounded-xl p-2.5 text-sm flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all"
+                  onClick={() => setIsStockDropdownOpen(!isStockDropdownOpen)}
                 >
-                  <option value="">-- กรุณาเลือกชิ้นส่วน --</option>
-                  {products.map(p => (
-                    <option key={p.id} value={String(p.id)}>
-                      [{p.sku}] {p.name} (คงเหลือ: {p.stock_quantity})
-                    </option>
-                  ))}
-                </select>
+                  <input 
+                    type="text"
+                    className="w-full bg-transparent outline-none font-medium text-slate-800 placeholder-slate-400"
+                    placeholder="🔍 พิมพ์ชื่อชิ้นส่วน หรือ รหัส SKU..."
+                    value={stockProductSearch}
+                    onChange={(e) => {
+                      setStockProductSearch(e.target.value);
+                      setIsStockDropdownOpen(true);
+                    }}
+                    onClick={(e) => e.stopPropagation()} // ป้องกันกล่องเด้งปิดเมื่อกดพิมพ์
+                  />
+                  <span className="text-slate-400 text-xs ml-2">🔽</span>
+                </div>
+
+                {/* แสดงชื่อตัวที่เลือกอยู่ปัจจุบันด้านล่างกล่องพิมพ์เพื่อให้เห็นชัด ๆ */}
+                {selectedStockProductDetail && (
+                  <p className="text-xs font-bold text-blue-600 mt-1 bg-blue-50/70 px-2 py-1 rounded-lg inline-block">
+                    🎯 เลือกอยู่: [{selectedStockProductDetail.sku}] {selectedStockProductDetail.name} (คงเหลือ: {selectedStockProductDetail.stock_quantity} ชิ้น)
+                  </p>
+                )}
+
+                {/* รายการตัวเลือกที่จะเด้งลงมาเมื่อคลิก หรือ พิมพ์ค้นหา */}
+                {isStockDropdownOpen && (
+                  <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto divide-y divide-slate-50">
+                    {filteredStockProducts.length > 0 ? (
+                      filteredStockProducts.map(p => (
+                        <div 
+                          key={p.id}
+                          className={`p-2.5 text-xs font-medium cursor-pointer transition-colors text-left flex justify-between items-center ${
+                            String(stockForm.product_id) === String(p.id) ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                          onClick={() => {
+                            setStockForm({...stockForm, product_id: String(p.id)});
+                            setStockProductSearch(''); // เคลียร์ข้อความพิมพ์ค้นหาหลังเลือกเสร็จ
+                            setIsStockDropdownOpen(false); // ปิดกล่องเมนูตัวเลือกลงมา
+                          }}
+                        >
+                          <div>
+                            <span className="font-mono text-slate-400 block text-[10px]">SKU: {p.sku}</span>
+                            <span className="text-slate-900 font-bold text-sm block">{p.name}</span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded font-bold ${p.stock_quantity === 0 ? 'bg-red-50 text-red-600':'bg-slate-100 text-slate-600'}`}>
+                            คลัง: {p.stock_quantity}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-4 text-center text-xs text-slate-400">❌ ไม่พบชื่อสินค้าอุปกรณ์ชิ้นนี้ในคลัง</div>
+                    )}
+                  </div>
+                )}
               </div>
+              {/* ✨ จบโซนกล่องพิมพ์ค้นหาชิ้นส่วนสินค้า */}
+
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ประเภทธุรกรรม</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -379,7 +439,16 @@ export default function UnifiedDashboardPage() {
                 <input type="number" min={1} required className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none font-bold text-slate-800" value={stockForm.quantity} onChange={e => setStockForm({...stockForm, quantity: Math.max(1, Number(e.target.value))})} />
               </div>
               <div className="flex gap-2 justify-end pt-4 border-t mt-6">
-                <button type="button" onClick={() => setShowStockModal(false)} className="px-4 py-2 border rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50">ปิดหน้านี้</button>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setIsStockDropdownOpen(false);
+                    setShowStockModal(false);
+                  }} 
+                  className="px-4 py-2 border rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  ปิดหน้านี้
+                </button>
                 <button type="submit" className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-bold">ยืนยันทำรายการ</button>
               </div>
             </form>
@@ -387,12 +456,10 @@ export default function UnifiedDashboardPage() {
         </div>
       )}
 
-      {/* 🔵 ✨ MODAL ใหม่: หน้าต่างแสดงรายละเอียดสินค้า (Info Modal) */}
+      {/* 🔵 MODAL: หน้าต่างแสดงรายละเอียดสินค้า (Info Modal) */}
       {showInfoModal && selectedProduct && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
-            
-            {/* ส่วนหัวการ์ดและรูปภาพ */}
             <div className="relative bg-slate-900 h-48 flex items-center justify-center">
               <img 
                 src={selectedProduct.image_url || 'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?w=400&auto=format&fit=crop&q=60'} 
@@ -413,8 +480,6 @@ export default function UnifiedDashboardPage() {
                 ✕
               </button>
             </div>
-
-            {/* ส่วนแสดงข้อมูลดีเทล */}
             <div className="p-5 space-y-4 text-slate-700 text-left bg-white">
               <div className="grid grid-cols-2 gap-4 border-b border-slate-100 pb-3">
                 <div>
@@ -428,7 +493,6 @@ export default function UnifiedDashboardPage() {
                   </span>
                 </div>
               </div>
-
               <div className="space-y-3">
                 <div>
                   <span className="text-[11px] font-bold text-slate-400 block uppercase">ร้านค้าผู้จัดจำหน่าย (Supplier)</span>
@@ -436,7 +500,6 @@ export default function UnifiedDashboardPage() {
                     🏢 {selectedProduct.supplier_name || <span className="text-slate-400 font-normal italic">ไม่ได้ระบุข้อมูลชื่อร้าน</span>}
                   </span>
                 </div>
-
                 <div>
                   <span className="text-[11px] font-bold text-slate-400 block uppercase">ลิงก์สั่งซื้อ / ติดต่อร้านค้า</span>
                   {selectedProduct.supplier_link ? (
@@ -454,8 +517,6 @@ export default function UnifiedDashboardPage() {
                 </div>
               </div>
             </div>
-
-            {/* ปุ่มปิดด้านล่าง */}
             <div className="p-4 border-t bg-slate-50 flex justify-end">
               <button 
                 onClick={() => setShowInfoModal(false)} 
@@ -464,7 +525,6 @@ export default function UnifiedDashboardPage() {
                 ปิดหน้าต่างนี้
               </button>
             </div>
-
           </div>
         </div>
       )}
