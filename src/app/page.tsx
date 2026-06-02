@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'; // ใช้ Path เดิมข
 export default function UnifiedDashboardPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]); // ✨ State เก็บประวัติ
   const [loading, setLoading] = useState(true);
 
   // สถิติสำหรับ Dashboard
@@ -22,7 +23,7 @@ export default function UnifiedDashboardPage() {
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [filterType, setFilterType] = useState<'ALL' | 'LOW' | 'OUT'>('ALL');
 
-  // ✨ State ใหม่เพิ่มเติม: สำหรับพิมพ์ค้นหาชิ้นส่วนในกล่องรับเข้า-เบิกออกด่วน
+  // State สำหรับพิมพ์ค้นหาชิ้นส่วนในกล่องรับเข้า-เบิกออกด่วน
   const [stockProductSearch, setStockProductSearch] = useState('');
   const [isStockDropdownOpen, setIsStockDropdownOpen] = useState(false);
 
@@ -36,6 +37,22 @@ export default function UnifiedDashboardPage() {
       const { data: pData } = await supabase.from('products').select('*').order('id', { ascending: false });
       const { data: cData } = await supabase.from('categories').select('*').order('name');
       
+      // ✨ ดึงข้อมูลประวัติการทำรายการพ่วงชื่อสินค้ามาด้วย
+      const { data: tData } = await supabase
+        .from('stock_transactions')
+        .select(`
+          id,
+          quantity,
+          type,
+          created_at,
+          product_id,
+          products (
+            name,
+            sku
+          )
+        `)
+        .order('id', { ascending: false });
+      
       if (pData) {
         setProducts(pData);
         const totalProducts = pData.length;
@@ -44,6 +61,7 @@ export default function UnifiedDashboardPage() {
         setStats({ total: totalProducts, low: lowStock, out: outOfStock });
       }
       if (cData) setCategories(cData);
+      if (tData) setTransactions(tData);
     } catch (err) {
       console.error(err);
     } finally {
@@ -81,12 +99,7 @@ export default function UnifiedDashboardPage() {
 
   async function handleStockAdjust(e: React.FormEvent) {
     e.preventDefault();
-    
     const targetId = String(stockForm.product_id).trim();
-    
-    console.log("=== เริ่มตรวจสอบการบันทึกสต็อก ===");
-    console.log("ID สินค้าที่น้าเลือกกดส่งมา:", targetId);
-    console.log("รายการสินค้าทั้งหมดในเครื่องตอนนี้:", products);
 
     if (!targetId || targetId === '') {
       alert('❌ กรุณาเลือกชิ้นส่วนสินค้าจากรายการก่อนทำรายการครับ');
@@ -119,13 +132,39 @@ export default function UnifiedDashboardPage() {
     fetchInitialData();
   }
 
+  // ✨ ฟังก์ชันสำหรับล้างประวัติเบิกจ่ายทั้งหมด
+  async function handleClearHistory() {
+    const confirmFirst = confirm("⚠️ น้าแน่ใจไหมครับที่จะล้างประวัติการเบิกและเพิ่มสินค้าทั้งหมด?\n(ข้อมูลประวัติการทำรายการจะหายหมด แต่ยอดสินค้าคงเหลือในคลังจะยังอยู่เหมือนเดิมครับ)");
+    if (!confirmFirst) return;
+
+    const confirmSecond = confirm("🚨 ยืนยันอีกครั้งเพื่อความปลอดภัย: การลบนี้ไม่สามารถกู้คืนได้ ยืนยันลบจริงไหมครับน้า?");
+    if (!confirmSecond) return;
+
+    try {
+      // ทำการลบข้อมูลทั้งหมดในตาราง stock_transactions
+      const { error } = await supabase.from('stock_transactions').delete().neq('id', 0); 
+      if (error) {
+        alert(`❌ เกิดข้อผิดพลาด: ${error.message}`);
+      } else {
+        alert("🧹 ล้างประวัติการทำรายการสำเร็จเรียบร้อยแล้วครับน้า!");
+        fetchInitialData();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  // ✨ ฟังก์ชันกดพิมพ์เป็น PDF ดึงเฉพาะส่วนประวัติออกมา
+  function handleExportPDF() {
+    window.print();
+  }
+
   const reportProducts = products.filter(p => {
     if (filterType === 'OUT') return p.stock_quantity === 0;
     if (filterType === 'LOW') return p.stock_quantity > 0 && p.stock_quantity <= 10;
     return p.stock_quantity <= 10;
   });
 
-  // ✨ ตัวกรองค้นหาสินค้าในกล่องหน้าต่างรับเข้า-จ่ายออกด่วน
   const filteredStockProducts = products.filter(p =>
     p.name.toLowerCase().includes(stockProductSearch.toLowerCase()) ||
     p.sku.toLowerCase().includes(stockProductSearch.toLowerCase())
@@ -136,11 +175,11 @@ export default function UnifiedDashboardPage() {
   return (
     <main className="py-6 space-y-6 max-w-6xl mx-auto px-2">
       
-      {/* 📊 ZONE 1: DASHBOARD CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* 📊 ZONE 1: DASHBOARD CARDS (จะถูกซ่อนเวลาสั่ง Print PDF) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 print:hidden">
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">สินค้าทั้งหมดในสต็อก</p>
+            <p className="text-xs font-bold text-slate-4400 text-slate-400 uppercase tracking-wider">สินค้าทั้งหมดในสต็อก</p>
             <p className="text-2xl font-extrabold text-slate-800 mt-1">{stats.total} <span className="text-xs font-normal text-slate-500">รายการ</span></p>
           </div>
           <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-lg">📦</div>
@@ -175,11 +214,11 @@ export default function UnifiedDashboardPage() {
           <h1 className="text-xl md:text-2xl font-bold text-slate-800 tracking-tight">Sornun Stock อัจฉริยะ</h1>
           <p className="text-xs md:text-sm text-slate-500 mt-0.5">ระบบควบคุมคลังสินค้าและสรุปรายงานจัดซื้อส่วนตัวของคุณ Sornun</p>
         </div>
-        <div className="flex gap-2 w-full md:w-auto">
+        <div className="flex gap-2 w-full md:w-auto print:hidden">
           <button 
             onClick={() => { 
               if(products.length > 0) { 
-                setStockProductSearch(''); // เคลียร์ข้อความพิมพ์ค้นหาอันเก่าออกก่อน
+                setStockProductSearch(''); 
                 setStockForm({ product_id: String(products[0].id), type: 'IN', quantity: 1 }); 
                 setShowStockModal(true); 
               } else { 
@@ -197,8 +236,8 @@ export default function UnifiedDashboardPage() {
       </div>
 
       {/* 📉 ZONE 3: พื้นที่หน้าหลักของ Dashboard */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center flex flex-col items-center justify-center min-h-[250px]">
-        <div className="text-4xl mb-3">📊</div>
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center flex flex-col items-center justify-center min-h-[180px] print:hidden">
+        <div className="text-4xl mb-2">📊</div>
         <h3 className="text-base font-bold text-slate-700">ยินดีต้อนรับเข้าสู่ระบบ Sornun Stock</h3>
         <p className="text-xs text-slate-400 max-w-sm mt-1 leading-relaxed">
           หน้านี้แสดงสถิติสำคัญแบบองค์รวมเพื่อความเป็นระเบียบ หากต้องการจัดการ เพิ่ม ลบ หรือแก้ไขข้อมูล สามารถกดเลือกใช้งานได้จากแท็บเมนู <strong className="text-slate-600">"คลังสินค้า (CRUD)"</strong> ด้านบนได้เลยครับ
@@ -213,10 +252,116 @@ export default function UnifiedDashboardPage() {
         )}
       </div>
 
+      {/* 🟠 ✨ ZONE 4: ระบบประวัติเบิกจ่ายและเพิ่มอุปกรณ์ + ออกรายงาน PDF */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-4 overflow-visible print:border-none print:shadow-none print:p-0">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b pb-4">
+          <div>
+            <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+              📜 ประวัติการเบิกใช้งานและนำเข้าคลังสินค้า
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5 print:hidden">บันทึกข้อมูลธุรกรรมรับเข้า-จ่ายออกสับเปลี่ยนอุปกรณ์ภายในระบบแบบ Real-time</p>
+            <p className="text-xs text-slate-500 mt-0.5 hidden print:block">พิมพ์รายงานวันที่: {new Date().toLocaleDateString('th-TH')} เวลา {new Date().toLocaleTimeString('th-TH')}</p>
+          </div>
+          
+          {/* ปุ่มควบคุมประวัติ (จะถูกซ่อนอัตโนมัติเวลาสั่งพิมพ์) */}
+          <div className="flex gap-2 w-full sm:w-auto print:hidden">
+            <button 
+              type="button"
+              onClick={handleExportPDF}
+              className="flex-1 sm:flex-none text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 px-3 py-2 rounded-xl transition-all flex items-center justify-center gap-1"
+            >
+              📄 ส่งออกรายงาน PDF
+            </button>
+            <button 
+              type="button"
+              onClick={handleClearHistory}
+              className="flex-1 sm:flex-none text-xs font-bold bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 px-3 py-2 rounded-xl transition-all flex items-center justify-center gap-1"
+            >
+              🧹 ล้างประวัติทั้งหมด
+            </button>
+          </div>
+        </div>
+
+        {/* ตารางข้อมูลประวัติ */}
+        <div className="overflow-x-auto border border-slate-100 rounded-xl print:border-slate-300">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-slate-50 text-slate-500 font-bold text-xs uppercase border-b border-slate-100 print:bg-slate-100 print:border-slate-300">
+              <tr>
+                <th className="p-3">วัน-เวลาที่ทำรายการ</th>
+                <th className="p-3">ชื่อชิ้นส่วน / SKU</th>
+                <th className="p-3 text-center">ประเภท</th>
+                <th className="p-3 text-right">จำนวน</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-slate-700 print:divide-slate-300">
+              {transactions.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-10 text-slate-400 text-xs">
+                    📭 ยังไม่มีข้อมูลประวัติการเพิ่มหรือเบิกสินค้าในระบบคลังตอนนี้
+                  </td>
+                </tr>
+              ) : (
+                transactions.map((t) => {
+                  const prodName = t.products?.name || 'ไม่พบข้อมูลสินค้า (อาจถูกลบไปแล้ว)';
+                  const prodSku = t.products?.sku || '-';
+                  const formattedDate = new Date(t.created_at).toLocaleString('th-TH', {
+                    year: 'numeric', month: 'short', day: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                  });
+
+                  return (
+                    <tr key={t.id} className="hover:bg-slate-50/40 text-xs transition-colors print:break-inside-avoid">
+                      <td className="p-3 font-medium text-slate-500 whitespace-nowrap">
+                        {formattedDate} น.
+                      </td>
+                      <td className="p-3">
+                        <span className="font-bold text-slate-800 block">{prodName}</span>
+                        <span className="font-mono text-[10px] text-slate-400">SKU: {prodSku}</span>
+                      </td>
+                      <td className="p-3 text-center">
+                        {t.type === 'IN' ? (
+                          <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold border border-emerald-100 print:bg-transparent print:text-emerald-800 print:border-none">
+                            📥 เพิ่มเข้า
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded bg-red-50 text-red-600 font-bold border border-red-100 print:bg-transparent print:text-red-800 print:border-none">
+                            📤 เบิกออก
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3 text-right font-extrabold text-slate-800 text-sm">
+                        {t.quantity} ชิ้น
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* CSS ดักการทำงานตอนกด Print PDF (ซ่อนหน้าต่างและ UI ส่วนเกินให้คลีนที่สุด) */}
+      <style jsx global>{`
+        @media print {
+          body {
+            background: white !important;
+            color: black !important;
+          }
+          nav, header, footer, .print\\:hidden {
+            display: none !important;
+          }
+          main {
+            padding: 0 !important;
+            max-width: 100% !important;
+          }
+        }
+      `}</style>
+
       {/* ป็อปอัป (Modal): รายงานจัดซื้อ */}
       {showOrderModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 print:hidden">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col border border-slate-100">
             <div className="p-5 border-b flex justify-between items-center bg-slate-50 rounded-t-2xl">
               <div>
                 <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">🛒 สรุปรายการอุปกรณ์ที่ต้องจัดซื้อเติมสต็อก</h3>
@@ -274,7 +419,7 @@ export default function UnifiedDashboardPage() {
 
       {/* MODAL: เพิ่ม/แก้ไขสินค้า */}
       {showModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 print:hidden">
           <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 border border-slate-100">
             <h3 className="text-lg font-bold text-slate-800 border-b pb-3 mb-4">{editingId ? '📝 แก้ไขข้อมูลชิ้นส่วนสินค้า' : '✨ เพิ่มสินค้าใหม่เข้าระบบ'}</h3>
             <form onSubmit={handleSaveProduct} className="space-y-4 text-slate-700 text-left">
@@ -328,18 +473,14 @@ export default function UnifiedDashboardPage() {
         </div>
       )}
 
-      {/* 🟠 MODAL: ระบบรับเข้า-เบิกออกสินค้าด่วน (อัปเกรดแบบพิมพ์ค้นหาอัจฉริยะแล้ว ✨) */}
+      {/* MODAL: ระบบรับเข้า-เบิกออกสินค้าด่วน */}
       {showStockModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          {/* เพิ่ม overflow-visible เพื่อไม่ให้เมนูดรอปดาวน์ค้นหาโดนกล่องตัดขาดเมื่อเด้งลงมา */}
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 print:hidden">
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-100 overflow-visible">
             <h3 className="text-lg font-bold text-slate-800 border-b pb-3 mb-4">🔄 หน้าทำรายการ รับเข้า / เบิกจ่ายคลัง</h3>
             <form onSubmit={handleStockAdjust} className="space-y-4 text-slate-700 text-left">
-              
-              {/* โซนพิมพ์ค้นหาชิ้นส่วนสินค้าแบบลื่นไหล */}
               <div className="relative">
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">เลือกหรือพิมพ์ค้นหาชิ้นส่วนสินค้า *</label>
-                
                 <div 
                   className="w-full border border-slate-200 bg-white rounded-xl p-2.5 text-sm flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all"
                   onClick={() => setIsStockDropdownOpen(!isStockDropdownOpen)}
@@ -353,19 +494,17 @@ export default function UnifiedDashboardPage() {
                       setStockProductSearch(e.target.value);
                       setIsStockDropdownOpen(true);
                     }}
-                    onClick={(e) => e.stopPropagation()} // ดักไม่ให้หน้าต่างปิดเวลากดพิมพ์ช่องนี้
+                    onClick={(e) => e.stopPropagation()}
                   />
                   <span className="text-slate-400 text-xs ml-2">🔽</span>
                 </div>
 
-                {/* โชว์สินค้าตัวที่เลือกปัจจุบันแบบชัด ๆ */}
                 {selectedStockProductDetail && (
                   <p className="text-xs font-bold text-blue-600 mt-1 bg-blue-50/70 px-2 py-1 rounded-lg inline-block">
                     🎯 เลือกอยู่: [{selectedStockProductDetail.sku}] {selectedStockProductDetail.name} (คงเหลือ: {selectedStockProductDetail.stock_quantity} ชิ้น)
                   </p>
                 )}
 
-                {/* รายการตัวเลือกที่ฟิลเตอร์แล้วจะโผล่ตรงนี้ */}
                 {isStockDropdownOpen && (
                   <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto divide-y divide-slate-50">
                     {filteredStockProducts.length > 0 ? (
@@ -377,8 +516,8 @@ export default function UnifiedDashboardPage() {
                           }`}
                           onClick={() => {
                             setStockForm({...stockForm, product_id: String(p.id)});
-                            setStockProductSearch(''); // คืนค่าความสะอาดให้กล่องพิมพ์
-                            setIsStockDropdownOpen(false); // สั่งพับเมนูเก็บ
+                            setStockProductSearch('');
+                            setIsStockDropdownOpen(false);
                           }}
                         >
                           <div>
