@@ -76,7 +76,10 @@ export default function UnifiedDashboardPage() {
       alert('❌ กรุณาเลือกชิ้นส่วนสินค้าก่อนทำรายการครับ');
       return;
     }
+    
+    // 🎯 แก้ไขตรงนี้: แปลงประเภทข้อมูลให้ตรงกันก่อนทำการค้นหา (ใช้ String ครอบทั้งสองฝั่ง)
     const prod = products.find(p => String(p.id) === String(stockForm.product_id));
+    
     if (!prod) {
       alert('❌ ไม่พบข้อมูลสินค้าชิ้นนี้ในระบบคลัง');
       return;
