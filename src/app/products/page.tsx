@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from 'react';
-import { supabase } from '../../../lib/supabase'; // แก้ไข Path ให้ถูกต้องตามโครงสร้างจริงของคุณ
+import { supabase } from '../../../lib/supabase'; // ใช้ Path เดิมของคุณ
 
 export default function UnifiedDashboardPage() {
   const [products, setProducts] = useState<any[]>([]);
@@ -17,7 +17,6 @@ export default function UnifiedDashboardPage() {
   const [form, setForm] = useState({ name: '', sku: '', category_id: '', price: 0, stock_quantity: 0, image_url: '', supplier_name: '', supplier_link: '' });
 
   const [showStockModal, setShowStockModal] = useState(false);
-  // ✨ ค่าเริ่มต้นของฟอร์มสต็อกเป็นสตริงว่างทั้งหมดเพื่อความถูกต้องของฟอร์ม HTML
   const [stockForm, setStockForm] = useState({ product_id: '', type: 'IN', quantity: 1 });
 
   useEffect(() => {
@@ -25,19 +24,26 @@ export default function UnifiedDashboardPage() {
   }, []);
 
   async function fetchInitialData() {
-    setLoading(true);
-    const { data: pData } = await supabase.from('products').select('*, categories(name)').order('id', { ascending: false });
-    const { data: cData } = await supabase.from('categories').select('*').order('name');
-    
-    if (pData) {
-      setProducts(pData);
-      const totalProducts = pData.length;
-      const lowStock = pData.filter(p => p.stock_quantity > 0 && p.stock_quantity <= 10).length;
-      const outOfStock = pData.filter(p => p.stock_quantity === 0).length;
-      setStats({ total: totalProducts, low: lowStock, out: outOfStock });
+    try {
+      setLoading(true);
+      // 🎯 แก้จุดที่ 1: เปลี่ยนจาก '*, categories(name)' มาเป็น select('*') แบน ๆ 
+      // เพื่อไม่ให้ object ซ้อนเจาะหาค่าสต็อกยาก และป้องการเกิดบั๊กหาข้อมูลไม่เจอ
+      const { data: pData } = await supabase.from('products').select('*').order('id', { ascending: false });
+      const { data: cData } = await supabase.from('categories').select('*').order('name');
+      
+      if (pData) {
+        setProducts(pData);
+        const totalProducts = pData.length;
+        const lowStock = pData.filter(p => p.stock_quantity > 0 && p.stock_quantity <= 10).length;
+        const outOfStock = pData.filter(p => p.stock_quantity === 0).length;
+        setStats({ total: totalProducts, low: lowStock, out: outOfStock });
+      }
+      if (cData) setCategories(cData);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-    if (cData) setCategories(cData);
-    setLoading(false);
   }
 
   function openForm(product: any = null) {
@@ -53,7 +59,6 @@ export default function UnifiedDashboardPage() {
 
   async function handleSaveProduct(e: React.FormEvent) {
     e.preventDefault();
-    
     if (editingId) {
       const payload = { ...form, category_id: form.category_id ? Number(form.category_id) : null };
       await supabase.from('products').update(payload).eq('id', editingId);
@@ -76,29 +81,39 @@ export default function UnifiedDashboardPage() {
     }
   }
 
+  // 🎯 แก้จุดที่ 2: อัปเกรดตัวหาไอดีสินค้าให้ฉลาดขึ้น รองรับทั้ง String และ Number ชัวร์ 100%
   async function handleStockAdjust(e: React.FormEvent) {
     e.preventDefault();
     
-    // ✨ ดักจับกรณีไม่ได้เลือกสินค้าให้ชัดเจน ป้องกันการหลุดเป็นไอดี 0
-    if (!stockForm.product_id) {
-      alert('❌ กรุณาเลือกชิ้นส่วนสินค้าก่อนทำรายการครับ');
+    const targetId = String(stockForm.product_id).trim();
+    
+    if (!targetId || targetId === '') {
+      alert('❌ กรุณาเลือกชิ้นส่วนสินค้าจากรายการก่อนทำรายการครับ');
       return;
     }
-
-    const targetProductId = Number(stockForm.product_id);
-    const prod = products.find(p => p.id === targetProductId);
+    
+    // ค้นหาสินค้าแบบยืดหยุ่น ป้องกันระบบสับสนชนิดข้อมูล
+    const prod = products.find(p => String(p.id).trim() === targetId || p.id === Number(targetId));
+    
     if (!prod) {
-      alert('❌ ไม่พบข้อมูลสินค้าชิ้นนี้ในระบบคลัง');
+      alert(`❌ ไม่พบข้อมูลสินค้าชิ้นนี้ในระบบคลัง\n(ระบบอ่านค่า ID ที่เลือกได้เป็น: "${targetId}")`);
       return;
     }
-
+    
     if (stockForm.type === 'OUT' && prod.stock_quantity < stockForm.quantity) {
-      alert('❌ ของในสต็อกมีไม่พอให้เบิกออกครับ!');
+      alert(`❌ ของในสต็อกมีไม่พอให้เบิกออกครับ!\n(ในคลังเหลืออยู่ ${prod.stock_quantity} ชิ้น แต่จะเบิกออก ${stockForm.quantity} ชิ้น)`);
       return;
     }
+    
+    const { error } = await supabase.from('stock_transactions').insert([
+      { product_id: prod.id, quantity: Number(stockForm.quantity), type: stockForm.type }
+    ]);
 
-    await supabase.from('stock_transactions').insert([{ product_id: prod.id, quantity: stockForm.quantity, type: stockForm.type }]);
-
+    if (error) {
+      alert(`❌ เกิดข้อผิดพลาดจากฐานข้อมูล: ${error.message}`);
+      return;
+    }
+    
     setShowStockModal(false);
     fetchInitialData();
   }
@@ -143,11 +158,10 @@ export default function UnifiedDashboardPage() {
           <p className="text-xs md:text-sm text-slate-500 mt-0.5">ภาพรวมคลังอุปกรณ์อิเล็กทรอนิกส์และการควบคุมแบบ Real-time</p>
         </div>
         <div className="flex gap-2 w-full md:w-auto">
-          {/* ✨ ปรับการกดเปิดฟอร์มด่วนให้เป็นสตริงว่างเพื่อให้สอดคล้องกับกล่อง Select คลัง */}
           <button 
             onClick={() => { 
               if(products.length > 0) { 
-                setStockForm({ product_id: '', type: 'IN', quantity: 1 }); 
+                setStockForm({ product_id: String(products[0].id), type: 'IN', quantity: 1 }); 
                 setShowStockModal(true); 
               } else { 
                 alert('กรุณาเพิ่มสินค้าในระบบก่อนครับ'); 
@@ -188,60 +202,67 @@ export default function UnifiedDashboardPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-slate-700">
-            {filteredProducts.map((product) => (
-              <tr key={product.id} className="hover:bg-slate-50/50 transition-colors">
-                <td className="p-4 text-center">
-                  <img src={product.image_url || 'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?w=80&auto=format&fit=crop&q=60'} alt={product.name} className="w-10 h-10 object-cover rounded-lg border border-slate-200 mx-auto" />
-                </td>
-                <td className="p-4">
-                  <span className="text-slate-800 font-bold block text-base">{product.name}</span>
-                  <span className="font-mono text-xs text-slate-400 font-medium">SKU: {product.sku}</span>
-                </td>
-                <td className="p-4">
-                  <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs font-semibold">{product.categories?.name || 'ทั่วไป'}</span>
-                </td>
-                <td className="p-4 font-bold text-slate-800">{Number(product.price).toLocaleString()}.-</td>
-                <td className="p-4">
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                    product.stock_quantity === 0 ? 'bg-red-50 text-red-600' : product.stock_quantity <= 10 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
-                  }`}>
-                    {product.stock_quantity} ชิ้น
-                  </span>
-                </td>
-                <td className="p-4 text-center space-x-2">
-                  <button onClick={() => openForm(product)} className="text-blue-600 hover:bg-blue-50 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all">แก้ไข</button>
-                  <button onClick={() => handleDelete(product.id)} className="text-red-600 hover:bg-red-50 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all">ลบ</button>
-                </td>
-              </tr>
-            ))}
+            {filteredProducts.map((product) => {
+              // ดึงชื่อหมวดหมู่จากอาเรย์หลักแทนการดึงแบบ Object ซ้อน
+              const matchedCat = categories.find(c => c.id === product.category_id);
+              return (
+                <tr key={product.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="p-4 text-center">
+                    <img src={product.image_url || 'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?w=80&auto=format&fit=crop&q=60'} alt={product.name} className="w-10 h-10 object-cover rounded-lg border border-slate-200 mx-auto" />
+                  </td>
+                  <td className="p-4">
+                    <span className="text-slate-800 font-bold block text-base">{product.name}</span>
+                    <span className="font-mono text-xs text-slate-400 font-medium">SKU: {product.sku}</span>
+                  </td>
+                  <td className="p-4">
+                    <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs font-semibold">{matchedCat ? matchedCat.name : 'ทั่วไป'}</span>
+                  </td>
+                  <td className="p-4 font-bold text-slate-800">{Number(product.price).toLocaleString()}.-</td>
+                  <td className="p-4">
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                      product.stock_quantity === 0 ? 'bg-red-50 text-red-600' : product.stock_quantity <= 10 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
+                    }`}>
+                      {product.stock_quantity} ชิ้น
+                    </span>
+                  </td>
+                  <td className="p-4 text-center space-x-2">
+                    <button onClick={() => openForm(product)} className="text-blue-600 hover:bg-blue-50 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all">แก้ไข</button>
+                    <button onClick={() => handleDelete(product.id)} className="text-red-600 hover:bg-red-50 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all">ลบ</button>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
 
       {/* 📱 ZONE 5: MOBILE CARD LAYOUT */}
       <div className="grid grid-cols-1 gap-3 md:hidden">
-        {filteredProducts.map((product) => (
-          <div key={product.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-3">
-            <div className="flex gap-3">
-              <img src={product.image_url || 'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?w=80&auto=format&fit=crop&q=60'} alt={product.name} className="w-14 h-14 object-cover rounded-xl border border-slate-200 bg-slate-50" />
-              <div className="flex-1 min-w-0">
-                <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded text-[10px] font-bold">{product.categories?.name || 'ทั่วไป'}</span>
-                <span className="text-slate-800 font-bold block text-sm truncate mt-0.5">{product.name}</span>
-                <span className="font-mono text-xs text-slate-400 block">SKU: {product.sku}</span>
+        {filteredProducts.map((product) => {
+          const matchedCat = categories.find(c => c.id === product.category_id);
+          return (
+            <div key={product.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-3">
+              <div className="flex gap-3">
+                <img src={product.image_url || 'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?w=80&auto=format&fit=crop&q=60'} alt={product.name} className="w-14 h-14 object-cover rounded-xl border border-slate-200 bg-slate-50" />
+                <div className="flex-1 min-w-0">
+                  <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded text-[10px] font-bold">{matchedCat ? matchedCat.name : 'ทั่วไป'}</span>
+                  <span className="text-slate-800 font-bold block text-sm truncate mt-0.5">{product.name}</span>
+                  <span className="font-mono text-xs text-slate-400 block">SKU: {product.sku}</span>
+                </div>
+              </div>
+              <div className="flex justify-between items-center bg-slate-50 p-2 rounded-xl text-xs font-bold">
+                <div className="text-slate-600">ราคา: <span className="text-slate-800">{Number(product.price).toLocaleString()} บ.</span></div>
+                <span className={`px-2 py-0.5 rounded ${product.stock_quantity === 0 ? 'bg-red-100 text-red-600' : product.stock_quantity <= 10 ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                  คลัง: {product.stock_quantity} ชิ้น
+                </span>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => openForm(product)} className="flex-1 bg-blue-50 text-blue-600 font-bold text-xs py-2 rounded-xl border border-blue-100">แก้ไข</button>
+                <button onClick={() => handleDelete(product.id)} className="flex-1 bg-red-50 text-red-600 font-bold text-xs py-2 rounded-xl border border-red-100">ลบออก</button>
               </div>
             </div>
-            <div className="flex justify-between items-center bg-slate-50 p-2 rounded-xl text-xs font-bold">
-              <div className="text-slate-600">ราคา: <span className="text-slate-800">{Number(product.price).toLocaleString()} บ.</span></div>
-              <span className={`px-2 py-0.5 rounded ${product.stock_quantity === 0 ? 'bg-red-100 text-red-600' : product.stock_quantity <= 10 ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                คลัง: {product.stock_quantity} ชิ้น
-              </span>
-            </div>
-            <div className="flex gap-2 pt-1">
-              <button onClick={() => openForm(product)} className="flex-1 bg-blue-50 text-blue-600 font-bold text-xs py-2 rounded-xl border border-blue-100">แก้ไข</button>
-              <button onClick={() => handleDelete(product.id)} className="flex-1 bg-red-50 text-red-600 font-bold text-xs py-2 rounded-xl border border-red-100">ลบออก</button>
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {filteredProducts.length === 0 && (
@@ -260,16 +281,16 @@ export default function UnifiedDashboardPage() {
             <form onSubmit={handleSaveProduct} className="space-y-4 text-slate-700 text-left">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ชื่อชิ้นส่วนอุปกรณ์ *</label>
-                <input type="text" required className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium" value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="เช่น IC Regulate 5V" />
+                <input type="text" required className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="เช่น IC Regulate 5V" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">รหัสสินค้า (SKU) *</label>
-                  <input type="text" required className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium" value={form.sku} onChange={e => setForm({...form, sku: e.target.value})} placeholder="เช่น IC-7805-X" />
+                  <input type="text" required className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.sku} onChange={e => setForm({...form, sku: e.target.value})} placeholder="เช่น IC-7805-X" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">หมวดหมู่</label>
-                  <select className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none focus:bg-white bg-white font-medium" value={form.category_id} onChange={e => setForm({...form, category_id: e.target.value})}>
+                  <select className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none bg-white font-medium" value={form.category_id} onChange={e => setForm({...form, category_id: e.target.value})}>
                     <option value="">เลือกหมวดหมู่</option>
                     {categories.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
                   </select>
@@ -278,7 +299,7 @@ export default function UnifiedDashboardPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ราคาต่อหน่วย (บาท)</label>
-                  <input type="number" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none focus:bg-white" value={form.price || ''} onChange={e => setForm({...form, price: Number(e.target.value)})} />
+                  <input type="number" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.price || ''} onChange={e => setForm({...form, price: Number(e.target.value)})} />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">สต็อกตั้งต้น (ชิ้น)</label>
@@ -287,7 +308,7 @@ export default function UnifiedDashboardPage() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ลิงก์ URL รูปภาพสินค้า</label>
-                <input type="url" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none focus:bg-white" value={form.image_url} onChange={e => setForm({...form, image_url: e.target.value})} placeholder="https://..." />
+                <input type="url" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.image_url} onChange={e => setForm({...form, image_url: e.target.value})} placeholder="https://..." />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
