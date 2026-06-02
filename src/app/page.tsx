@@ -27,19 +27,24 @@ export default function UnifiedDashboardPage() {
   }, []);
 
   async function fetchInitialData() {
-    setLoading(true);
-    const { data: pData } = await supabase.from('products').select('*, categories(name)').order('id', { ascending: false });
-    const { data: cData } = await supabase.from('categories').select('*').order('name');
-    
-    if (pData) {
-      setProducts(pData);
-      const totalProducts = pData.length;
-      const lowStock = pData.filter(p => p.stock_quantity > 0 && p.stock_quantity <= 10).length;
-      const outOfStock = pData.filter(p => p.stock_quantity === 0).length;
-      setStats({ total: totalProducts, low: lowStock, out: outOfStock });
+    try {
+      setLoading(true);
+      const { data: pData } = await supabase.from('products').select('*, categories(name)').order('id', { ascending: false });
+      const { data: cData } = await supabase.from('categories').select('*').order('name');
+      
+      if (pData) {
+        setProducts(pData);
+        const totalProducts = pData.length;
+        const lowStock = pData.filter(p => p.stock_quantity > 0 && p.stock_quantity <= 10).length;
+        const outOfStock = pData.filter(p => p.stock_quantity === 0).length;
+        setStats({ total: totalProducts, low: lowStock, out: outOfStock });
+      }
+      if (cData) setCategories(cData);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false); // 🎯 แก้จุดบั๊กที่ 1: ปลดสถานะ loading ออกให้ถูกต้องเสมอ
     }
-    if (cData) setCategories(cData);
-    loading && setLoading(false);
   }
 
   function openForm(product: any = null) {
@@ -72,22 +77,27 @@ export default function UnifiedDashboardPage() {
 
   async function handleStockAdjust(e: React.FormEvent) {
     e.preventDefault();
-    if (!stockForm.product_id) {
-      alert('❌ กรุณาเลือกชิ้นส่วนสินค้าก่อนทำรายการครับ');
+    
+    const selectedId = String(stockForm.product_id).trim();
+    
+    if (!selectedId || selectedId === '') {
+      alert('❌ กรุณาเลือกชิ้นส่วนสินค้าจากรายการก่อนทำรายการครับ');
       return;
     }
     
-    // 🎯 แก้ไขตรงนี้: แปลงประเภทข้อมูลให้ตรงกันก่อนทำการค้นหา (ใช้ String ครอบทั้งสองฝั่ง)
-    const prod = products.find(p => String(p.id) === String(stockForm.product_id));
+    // 🎯 แก้จุดบั๊กที่ 2: ใช้การจับคู่แบบครอบ String และตัดช่องว่างทั้งหมด ป้องกันประเภทข้อมูลเพี้ยน
+    const prod = products.find(p => String(p.id).trim() === selectedId);
     
     if (!prod) {
       alert('❌ ไม่พบข้อมูลสินค้าชิ้นนี้ในระบบคลัง');
       return;
     }
+    
     if (stockForm.type === 'OUT' && prod.stock_quantity < stockForm.quantity) {
       alert('❌ ของในสต็อกมีไม่พอให้เบิกออกครับ!');
       return;
     }
+    
     await supabase.from('stock_transactions').insert([{ product_id: prod.id, quantity: stockForm.quantity, type: stockForm.type }]);
     setShowStockModal(false);
     fetchInitialData();
@@ -103,9 +113,8 @@ export default function UnifiedDashboardPage() {
   return (
     <main className="py-6 space-y-6 max-w-6xl mx-auto px-2">
       
-      {/* 📊 ZONE 1: DASHBOARD CARDS (คลิกเปิดดูรายงานสั่งซื้อได้ด่วน) */}
+      {/* 📊 ZONE 1: DASHBOARD CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        
         {/* รายการทั้งหมด */}
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
           <div>
@@ -140,7 +149,7 @@ export default function UnifiedDashboardPage() {
         </div>
       </div>
 
-      {/* 🏪 ZONE 2: HEADER CONTROL (เปลี่ยนชื่อเป็น Sornun Stock ให้แล้วครับ!) */}
+      {/* 🏪 ZONE 2: HEADER CONTROL */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-slate-800 tracking-tight">Sornun Stock อัจฉริยะ</h1>
@@ -150,7 +159,8 @@ export default function UnifiedDashboardPage() {
           <button 
             onClick={() => { 
               if(products.length > 0) { 
-                setStockForm({ product_id: '', type: 'IN', quantity: 1 }); 
+                // 🎯 แก้จุดบั๊กที่ 3: เลือกไอดีของสินค้าตัวแรกในอาเรย์มารองรับไว้เป็นดีฟอลต์ ไม่ปล่อยให้เป็นค่าว่างเปล่า
+                setStockForm({ product_id: String(products[0].id), type: 'IN', quantity: 1 }); 
                 setShowStockModal(true); 
               } else { 
                 alert('กรุณาเพิ่มสินค้าในระบบก่อนครับ'); 
@@ -166,7 +176,7 @@ export default function UnifiedDashboardPage() {
         </div>
       </div>
 
-      {/* 📉 ZONE 3: พื้นที่หน้าหลักของ Dashboard (สไตล์คลีน สบายตา) */}
+      {/* 📉 ZONE 3: พื้นที่หน้าหลักของ Dashboard */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center flex flex-col items-center justify-center min-h-[250px]">
         <div className="text-4xl mb-3">📊</div>
         <h3 className="text-base font-bold text-slate-700">ยินดีต้อนรับเข้าสู่ระบบ Sornun Stock</h3>
@@ -183,31 +193,21 @@ export default function UnifiedDashboardPage() {
         )}
       </div>
 
-
-      {/* 🖼️ ป็อปอัป (Modal): สรุปรายงานตัวช่วยสั่งซื้ออุปกรณ์ที่หมดหรือใกล้หมดสต็อก */}
+      {/* 🖼️ ป็อปอัป (Modal): สรุปรายงานตัวช่วยสั่งซื้ออุปกรณ์ */}
       {showOrderModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
-            
-            {/* Header ป็อปอัป */}
             <div className="p-5 border-b flex justify-between items-center bg-slate-50 rounded-t-2xl">
               <div>
-                <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                  🛒 สรุปรายการอุปกรณ์ที่ต้องจัดซื้อเติมสต็อก
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  แสดงเฉพาะรายการที่มีระดับสินค้าวิกฤต (น้อยกว่าหรือเท่ากับ 10 ชิ้น)
-                </p>
+                <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">🛒 สรุปรายการอุปกรณ์ที่ต้องจัดซื้อเติมสต็อก</h3>
+                <p className="text-xs text-slate-400 mt-0.5">แสดงเฉพาะรายการที่มีระดับสินค้าวิกฤต (น้อยกว่าหรือเท่ากับ 10 ชิ้น)</p>
               </div>
               <button onClick={() => setShowOrderModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold p-1">✕</button>
             </div>
 
-            {/* ส่วนแสดงตารางข้อมูลร้านค้า */}
             <div className="p-5 overflow-y-auto flex-1">
               {reportProducts.length === 0 ? (
-                <div className="text-center py-12 text-slate-400 text-sm">
-                  🎉 สบายใจได้! ไม่มีรายการอุปกรณ์ที่ตรงตามเงื่อนไขนี้เลยครับคลังแน่นๆ
-                </div>
+                <div className="text-center py-12 text-slate-400 text-sm">🎉 สบายใจได้! ไม่มีรายการอุปกรณ์ที่ตรงตามเงื่อนไขนี้เลยครับคลังแน่นๆ</div>
               ) : (
                 <div className="overflow-x-auto border border-slate-100 rounded-xl">
                   <table className="w-full text-sm text-left">
@@ -226,27 +226,17 @@ export default function UnifiedDashboardPage() {
                             <span className="font-mono text-[11px] text-slate-400">SKU: {item.sku}</span>
                           </td>
                           <td className="p-3 text-center">
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                              item.stock_quantity === 0 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'
-                            }`}>
+                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${item.stock_quantity === 0 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
                               {item.stock_quantity} ชิ้น
                             </span>
                           </td>
                           <td className="p-3">
                             {item.supplier_link ? (
-                              <a 
-                                href={item.supplier_link} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-800 hover:underline font-bold text-xs"
-                              >
-                                🛒 {item.supplier_name || 'ลิงก์ไปสั่งซื้อของ'} 
-                                <span className="text-[10px]">↗</span>
+                              <a href={item.supplier_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-800 hover:underline font-bold text-xs">
+                                🛒 {item.supplier_name || 'ลิงก์ไปสั่งซื้อของ'} <span className="text-[10px]">↗</span>
                               </a>
                             ) : (
-                              <span className="text-slate-400 italic text-xs">
-                                {item.supplier_name ? `🏪 ${item.supplier_name} (ไม่ได้ลงลิงก์ไว้)` : 'ไม่ได้ระบุข้อมูลร้าน'}
-                              </span>
+                              <span className="text-slate-400 italic text-xs">{item.supplier_name ? `🏪 ${item.supplier_name} (ไม่ได้ลงลิงก์ไว้)` : 'ไม่ได้ระบุข้อมูลร้าน'}</span>
                             )}
                           </td>
                         </tr>
@@ -257,28 +247,18 @@ export default function UnifiedDashboardPage() {
               )}
             </div>
 
-            {/* Footer ป็อปอัป */}
             <div className="p-4 border-t bg-slate-50 rounded-b-2xl flex justify-end">
-              <button
-                onClick={() => setShowOrderModal(false)}
-                className="bg-slate-800 text-white hover:bg-slate-900 px-5 py-2 rounded-xl font-bold text-xs transition-colors"
-              >
-                ปิดหน้ารายงาน
-              </button>
+              <button onClick={() => setShowOrderModal(false)} className="bg-slate-800 text-white hover:bg-slate-900 px-5 py-2 rounded-xl font-bold text-xs transition-colors">ปิดหน้ารายงาน</button>
             </div>
-
           </div>
         </div>
       )}
 
-
-      {/* 🟩 MODAL: เพิ่ม/แก้ไขสินค้า (คงเดิมไว้สมบูรณ์) */}
+      {/* 🟩 MODAL: เพิ่ม/แก้ไขสินค้า */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 border border-slate-100">
-            <h3 className="text-lg font-bold text-slate-800 border-b pb-3 mb-4">
-              {editingId ? '📝 แก้ไขข้อมูลชิ้นส่วนสินค้า' : '✨ เพิ่มสินค้าใหม่เข้าระบบ'}
-            </h3>
+            <h3 className="text-lg font-bold text-slate-800 border-b pb-3 mb-4">{editingId ? '📝 แก้ไขข้อมูลชิ้นส่วนสินค้า' : '✨ เพิ่มสินค้าใหม่เข้าระบบ'}</h3>
             <form onSubmit={handleSaveProduct} className="space-y-4 text-slate-700 text-left">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ชื่อชิ้นส่วนอุปกรณ์ *</label>
@@ -330,7 +310,7 @@ export default function UnifiedDashboardPage() {
         </div>
       )}
 
-      {/* 🟠 MODAL: ระบบรับเข้า-เบิกออกสินค้าด่วน (คงเดิมไว้สมบูรณ์) */}
+      {/* 🟠 MODAL: ระบบรับเข้า-เบิกออกสินค้าด่วน */}
       {showStockModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-100">
