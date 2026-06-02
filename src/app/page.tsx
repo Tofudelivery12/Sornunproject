@@ -1,11 +1,10 @@
 "use client";
 import { useEffect, useState } from 'react';
-import { supabase } from '../../lib/supabase'; // แก้ไข Path ให้ถูกต้องตามโครงสร้างจริงของคุณ
+import { supabase } from '../../lib/supabase'; // ใช้ Path เดิมของคุณ
 
 export default function UnifiedDashboardPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
 
   // สถิติสำหรับ Dashboard
@@ -17,8 +16,11 @@ export default function UnifiedDashboardPage() {
   const [form, setForm] = useState({ name: '', sku: '', category_id: '', price: 0, stock_quantity: 0, image_url: '', supplier_name: '', supplier_link: '' });
 
   const [showStockModal, setShowStockModal] = useState(false);
-  // เซ็ตค่าเริ่มต้นของ product_id เป็น string ว่าง เพื่อรองรับ <option value="">
   const [stockForm, setStockForm] = useState({ product_id: '', type: 'IN', quantity: 1 });
+
+  // 🎯 เพิ่ม State สำหรับคุมป็อปอัป "หน้ารายงานของใกล้หมด/หมดคลัง" และเก็บประเภทที่จะฟิลเตอร์
+  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [filterType, setFilterType] = useState<'ALL' | 'LOW' | 'OUT'>('ALL');
 
   useEffect(() => {
     fetchInitialData();
@@ -37,7 +39,7 @@ export default function UnifiedDashboardPage() {
       setStats({ total: totalProducts, low: lowStock, out: outOfStock });
     }
     if (cData) setCategories(cData);
-    setLoading(false);
+    loading && setLoading(false);
   }
 
   function openForm(product: any = null) {
@@ -53,7 +55,6 @@ export default function UnifiedDashboardPage() {
 
   async function handleSaveProduct(e: React.FormEvent) {
     e.preventDefault();
-    
     if (editingId) {
       const payload = { ...form, category_id: form.category_id ? Number(form.category_id) : null };
       await supabase.from('products').update(payload).eq('id', editingId);
@@ -69,70 +70,70 @@ export default function UnifiedDashboardPage() {
     fetchInitialData();
   }
 
-  async function handleDelete(id: number) {
-    if (confirm('⚠️ คุณแน่ใจใช่ไหมที่จะลบสินค้ารายการนี้ออกจากระบบคลัง?')) {
-      await supabase.from('products').delete().eq('id', id);
-      fetchInitialData();
-    }
-  }
-
   async function handleStockAdjust(e: React.FormEvent) {
     e.preventDefault();
-    
     if (!stockForm.product_id) {
       alert('❌ กรุณาเลือกชิ้นส่วนสินค้าก่อนทำรายการครับ');
       return;
     }
-
-    // 💡 ไฮไลท์จุดแก้: แปลงทั้งคู่เป็น String ตอนเปรียบเทียบ จะ ID แบบเลขหรือ UUID ก็หาเจอ 100%
     const prod = products.find(p => String(p.id) === String(stockForm.product_id));
-    
     if (!prod) {
       alert('❌ ไม่พบข้อมูลสินค้าชิ้นนี้ในระบบคลัง');
       return;
     }
-
     if (stockForm.type === 'OUT' && prod.stock_quantity < stockForm.quantity) {
       alert('❌ ของในสต็อกมีไม่พอให้เบิกออกครับ!');
       return;
     }
-
     await supabase.from('stock_transactions').insert([{ product_id: prod.id, quantity: stockForm.quantity, type: stockForm.type }]);
-
     setShowStockModal(false);
     fetchInitialData();
   }
 
-  const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    p.sku.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // 🎯 ฟังก์ชันช่วยคัดกรองข้อมูลอุปกรณ์ที่ตรงตามเงื่อนไขเพื่อไปโชว์ในป็อปอัปใบสั่งของ
+  const reportProducts = products.filter(p => {
+    if (filterType === 'OUT') return p.stock_quantity === 0;
+    if (filterType === 'LOW') return p.stock_quantity > 0 && p.stock_quantity <= 10;
+    return p.stock_quantity <= 10; // 'ALL' คือเอาทั้งสองอย่าง
+  });
 
   return (
     <main className="py-6 space-y-6 max-w-6xl mx-auto px-2">
       
-      {/* 📊 ZONE 1: DASHBOARD CARDS */}
+      {/* 📊 ZONE 1: DASHBOARD CARDS (ปรับให้สะอาดตา และคลิกเปิดดูรายงานด่วนได้) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        
+        {/* รายการทั้งหมด (ดูภาพรวมอย่างเดียว) */}
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">สินค้าทั้งหมด</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">สินค้าทั้งหมดในสต็อก</p>
             <p className="text-2xl font-extrabold text-slate-800 mt-1">{stats.total} <span className="text-xs font-normal text-slate-500">รายการ</span></p>
           </div>
           <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-lg">📦</div>
         </div>
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+
+        {/* ปุ่มสต็อกใกล้หมด -> กดเพื่อสั่งซื้อของ */}
+        <div 
+          onClick={() => { setFilterType('LOW'); setShowOrderModal(true); }}
+          className="bg-amber-50/60 p-5 rounded-2xl shadow-sm border border-amber-200 flex items-center justify-between cursor-pointer hover:bg-amber-100/70 transition-all"
+        >
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">สต็อกใกล้หมด (≤ 10)</p>
+            <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">สต็อกใกล้หมด (≤ 10) ↗</p>
             <p className="text-2xl font-extrabold text-amber-600 mt-1">{stats.low} <span className="text-xs font-normal text-slate-500">รายการ</span></p>
           </div>
-          <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center text-lg">⚠️</div>
+          <div className="w-10 h-10 bg-amber-500 text-white rounded-xl flex items-center justify-center text-lg shadow-sm animate-pulse">⚠️</div>
         </div>
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+
+        {/* ปุ่มสินค้าหมดคลัง -> กดเพื่อสั่งซื้อของ */}
+        <div 
+          onClick={() => { setFilterType('OUT'); setShowOrderModal(true); }}
+          className="bg-red-50/60 p-5 rounded-2xl shadow-sm border border-red-200 flex items-center justify-between cursor-pointer hover:bg-red-100/70 transition-all"
+        >
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">สินค้าหมดคลัง (0)</p>
+            <p className="text-xs font-bold text-red-700 uppercase tracking-wider">สินค้าหมดคลัง (0) ↗</p>
             <p className="text-2xl font-extrabold text-red-600 mt-1">{stats.out} <span className="text-xs font-normal text-slate-500">รายการ</span></p>
           </div>
-          <div className="w-10 h-10 bg-red-50 text-red-600 rounded-xl flex items-center justify-center text-lg">🚨</div>
+          <div className="w-10 h-10 bg-red-500 text-white rounded-xl flex items-center justify-center text-lg shadow-sm animate-pulse">🚨</div>
         </div>
       </div>
 
@@ -162,94 +163,113 @@ export default function UnifiedDashboardPage() {
         </div>
       </div>
 
-      {/* 🔎 ZONE 3: SEARCH BAR */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3">
-        <input 
-          type="text" 
-          placeholder="🔎 ค้นหาชิ้นส่วนด้วยชื่อ หรือรหัสสินค้า (SKU) ที่นี่..." 
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
-        />
+      {/* 📉 ZONE 3: พื้นที่หน้าหลักของ Dashboard (จัดหน้าโล่งสวย สะอาดตา ไม่รกด้วยตารางเดิม) */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center flex flex-col items-center justify-center min-h-[250px]">
+        <div className="text-4xl mb-3">📊</div>
+        <h3 className="text-base font-bold text-slate-700">ยินดีต้อนรับเข้าสู่ระบบจัดการสต็อกอัจฉริยะ</h3>
+        <p className="text-xs text-slate-400 max-w-sm mt-1 leading-relaxed">
+          หน้านี้จะแสดงเฉพาะสถิติสำคัญเพื่อความสะอาดตา หากต้องการดูรายการสินค้าทั้งหมดหรือแก้ไข ลบ ข้อมูล สามารถคลิกเลือกที่แท็บเมนู <strong className="text-slate-600">"คลังสินค้า (CRUD)"</strong> ด้านบนได้เลยครับ
+        </p>
+        {(stats.low > 0 || stats.out > 0) && (
+          <button 
+            onClick={() => { setFilterType('ALL'); setShowOrderModal(true); }}
+            className="mt-4 bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors shadow-sm"
+          >
+            📋 เปิดดูสรุปรายการที่ต้องสั่งของทั้งหมด ({stats.low + stats.out} รายการ)
+          </button>
+        )}
       </div>
 
-      {/* 💻 ZONE 4: DESKTOP TABLE */}
-      <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <table className="w-full text-left border-collapse text-sm">
-          <thead>
-            <tr className="bg-slate-50 text-slate-500 font-bold text-xs uppercase border-b border-slate-100">
-              <th className="p-4 text-center">รูป</th>
-              <th className="p-4">ชื่อสินค้า / SKU</th>
-              <th className="p-4">หมวดหมู่</th>
-              <th className="p-4">ราคาหน่วย</th>
-              <th className="p-4">คงเหลือ</th>
-              <th className="p-4 text-center">การจัดการ</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 text-slate-700">
-            {filteredProducts.map((product) => (
-              <tr key={product.id} className="hover:bg-slate-50/50 transition-colors">
-                <td className="p-4 text-center">
-                  <img src={product.image_url || 'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?w=80&auto=format&fit=crop&q=60'} alt={product.name} className="w-10 h-10 object-cover rounded-lg border border-slate-200 mx-auto" />
-                </td>
-                <td className="p-4">
-                  <span className="text-slate-800 font-bold block text-base">{product.name}</span>
-                  <span className="font-mono text-xs text-slate-400 font-medium">SKU: {product.sku}</span>
-                </td>
-                <td className="p-4">
-                  <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs font-semibold">{product.categories?.name || 'ทั่วไป'}</span>
-                </td>
-                <td className="p-4 font-bold text-slate-800">{Number(product.price).toLocaleString()}.-</td>
-                <td className="p-4">
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                    product.stock_quantity === 0 ? 'bg-red-50 text-red-600' : product.stock_quantity <= 10 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
-                  }`}>
-                    {product.stock_quantity} ชิ้น
-                  </span>
-                </td>
-                <td className="p-4 text-center space-x-2">
-                  <button onClick={() => openForm(product)} className="text-blue-600 hover:bg-blue-50 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all">แก้ไข</button>
-                  <button onClick={() => handleDelete(product.id)} className="text-red-600 hover:bg-red-50 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all">ลบ</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
 
-      {/* 📱 ZONE 5: MOBILE CARD LAYOUT */}
-      <div className="grid grid-cols-1 gap-3 md:hidden">
-        {filteredProducts.map((product) => (
-          <div key={product.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-3">
-            <div className="flex gap-3">
-              <img src={product.image_url || 'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?w=80&auto=format&fit=crop&q=60'} alt={product.name} className="w-14 h-14 object-cover rounded-xl border border-slate-200 bg-slate-50" />
-              <div className="flex-1 min-w-0">
-                <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded text-[10px] font-bold">{product.categories?.name || 'ทั่วไป'}</span>
-                <span className="text-slate-800 font-bold block text-sm truncate mt-0.5">{product.name}</span>
-                <span className="font-mono text-xs text-slate-400 block">SKU: {product.sku}</span>
+      {/* 🖼️ 💳 ป็อปอัปใหม่ (Modal): สรุปรายงานตัวช่วยสั่งซื้ออุปกรณ์ที่หมดหรือใกล้หมดสต็อก */}
+      {showOrderModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+            
+            {/* Header ป็อปอัป */}
+            <div className="p-5 border-b flex justify-between items-center bg-slate-50 rounded-t-2xl">
+              <div>
+                <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                  🛒 สรุปรายการอุปกรณ์ที่ต้องจัดซื้อเติมสต็อก
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  แสดงเฉพาะรายการที่มีระดับสินค้าวิกฤต (น้อยกว่าหรือเท่ากับ 10 ชิ้น)
+                </p>
               </div>
+              <button onClick={() => setShowOrderModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold p-1">✕</button>
             </div>
-            <div className="flex justify-between items-center bg-slate-50 p-2 rounded-xl text-xs font-bold">
-              <div className="text-slate-600">ราคา: <span className="text-slate-800">{Number(product.price).toLocaleString()} บ.</span></div>
-              <span className={`px-2 py-0.5 rounded ${product.stock_quantity === 0 ? 'bg-red-100 text-red-600' : product.stock_quantity <= 10 ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                คลัง: {product.stock_quantity} ชิ้น
-              </span>
-            </div>
-            <div className="flex gap-2 pt-1">
-              <button onClick={() => openForm(product)} className="flex-1 bg-blue-50 text-blue-600 font-bold text-xs py-2 rounded-xl border border-blue-100">แก้ไข</button>
-              <button onClick={() => handleDelete(product.id)} className="flex-1 bg-red-50 text-red-600 font-bold text-xs py-2 rounded-xl border border-red-100">ลบออก</button>
-            </div>
-          </div>
-        ))}
-      </div>
 
-      {filteredProducts.length === 0 && (
-        <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 border-dashed text-slate-400 text-sm">
-          📭 ไม่พบข้อมูลสินค้าอิเล็กทรอนิกส์ในระบบคลัง
+            {/* ส่วนแสดงตารางข้อมูลร้านค้า */}
+            <div className="p-5 overflow-y-auto flex-1">
+              {reportProducts.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 text-sm">
+                  🎉 สบายใจได้! ไม่มีรายการอุปกรณ์ที่ตรงตามเงื่อนไขนี้เลยครับคลังแน่นๆ
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-slate-100 rounded-xl">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-slate-50 text-slate-500 font-bold text-xs uppercase border-b border-slate-100">
+                      <tr>
+                        <th className="p-3">ชื่อชิ้นส่วน / SKU</th>
+                        <th className="p-3 text-center">คงเหลือปัจจุบัน</th>
+                        <th className="p-3">ร้านค้า / ลิงก์ช่องทางสั่งซื้ออุปกรณ์</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {reportProducts.map((item) => (
+                        <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="p-3">
+                            <span className="font-bold text-slate-800 block text-sm">{item.name}</span>
+                            <span className="font-mono text-[11px] text-slate-400">SKU: {item.sku}</span>
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                              item.stock_quantity === 0 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'
+                            }`}>
+                              {item.stock_quantity} ชิ้น
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            {item.supplier_link ? (
+                              <a 
+                                href={item.supplier_link} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-800 hover:underline font-bold text-xs"
+                              >
+                                🛒 {item.supplier_name || 'ลิงก์ไปสั่งซื้อของ'} 
+                                <span className="text-[10px]">↗</span>
+                              </a>
+                            ) : (
+                              <span className="text-slate-400 italic text-xs">
+                                {item.supplier_name ? `🏪 ${item.supplier_name} (ไม่ได้ลงลิงก์ไว้)` : 'ไม่ได้ระบุข้อมูลร้าน'}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Footer ป็อปอัป */}
+            <div className="p-4 border-t bg-slate-50 rounded-b-2xl flex justify-end">
+              <button
+                onClick={() => setShowOrderModal(false)}
+                className="bg-slate-800 text-white hover:bg-slate-900 px-5 py-2 rounded-xl font-bold text-xs transition-colors"
+              >
+                ปิดหน้ารายงาน
+              </button>
+            </div>
+
+          </div>
         </div>
       )}
 
-      {/* 🟩 MODAL: เพิ่ม/แก้ไขสินค้า */}
+
+      {/* 🟩 MODAL: เพิ่ม/แก้ไขสินค้า (เก็บโครงสร้างเดิมของคุณไว้ครบถ้วน) */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 border border-slate-100">
@@ -259,16 +279,16 @@ export default function UnifiedDashboardPage() {
             <form onSubmit={handleSaveProduct} className="space-y-4 text-slate-700 text-left">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ชื่อชิ้นส่วนอุปกรณ์ *</label>
-                <input type="text" required className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium" value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="เช่น IC Regulate 5V" />
+                <input type="text" required className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="เช่น IC Regulate 5V" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">รหัสสินค้า (SKU) *</label>
-                  <input type="text" required className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium" value={form.sku} onChange={e => setForm({...form, sku: e.target.value})} placeholder="เช่น IC-7805-X" />
+                  <input type="text" required className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.sku} onChange={e => setForm({...form, sku: e.target.value})} placeholder="เช่น IC-7805-X" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">หมวดหมู่</label>
-                  <select className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none focus:bg-white bg-white font-medium" value={form.category_id} onChange={e => setForm({...form, category_id: e.target.value})}>
+                  <select className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none bg-white font-medium" value={form.category_id} onChange={e => setForm({...form, category_id: e.target.value})}>
                     <option value="">เลือกหมวดหมู่</option>
                     {categories.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
                   </select>
@@ -277,7 +297,7 @@ export default function UnifiedDashboardPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ราคาต่อหน่วย (บาท)</label>
-                  <input type="number" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none focus:bg-white" value={form.price || ''} onChange={e => setForm({...form, price: Number(e.target.value)})} />
+                  <input type="number" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.price || ''} onChange={e => setForm({...form, price: Number(e.target.value)})} />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">สต็อกตั้งต้น (ชิ้น)</label>
@@ -286,7 +306,7 @@ export default function UnifiedDashboardPage() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ลิงก์ URL รูปภาพสินค้า</label>
-                <input type="url" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none focus:bg-white" value={form.image_url} onChange={e => setForm({...form, image_url: e.target.value})} placeholder="https://..." />
+                <input type="url" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.image_url} onChange={e => setForm({...form, image_url: e.target.value})} placeholder="https://..." />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -307,7 +327,7 @@ export default function UnifiedDashboardPage() {
         </div>
       )}
 
-      {/* 🟠 MODAL: ระบบรับเข้า-เบิกออกสินค้าด่วน (จุดแก้ไขบรรทัดที่ 300+ เดิม) */}
+      {/* 🟠 MODAL: ระบบรับเข้า-เบิกออกสินค้าด่วน (เก็บโครงสร้างเดิมของคุณไว้ครบถ้วน) */}
       {showStockModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-100">
@@ -321,7 +341,6 @@ export default function UnifiedDashboardPage() {
                   value={stockForm.product_id} 
                   onChange={e => setStockForm({...stockForm, product_id: e.target.value})}
                 >
-                  {/* รองรับค่าว่างเริ่มต้นเพื่อแก้บั๊ก NaN เมื่อ Products ยังโหลดไม่เสร็จ */}
                   <option value="">-- กรุณาเลือกชิ้นส่วน --</option>
                   {products.map(p => (
                     <option key={p.id} value={String(p.id)}>
