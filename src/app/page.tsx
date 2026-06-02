@@ -22,6 +22,10 @@ export default function UnifiedDashboardPage() {
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [filterType, setFilterType] = useState<'ALL' | 'LOW' | 'OUT'>('ALL');
 
+  // ✨ State ใหม่เพิ่มเติม: สำหรับพิมพ์ค้นหาชิ้นส่วนในกล่องรับเข้า-เบิกออกด่วน
+  const [stockProductSearch, setStockProductSearch] = useState('');
+  const [isStockDropdownOpen, setIsStockDropdownOpen] = useState(false);
+
   useEffect(() => {
     fetchInitialData();
   }, []);
@@ -29,7 +33,6 @@ export default function UnifiedDashboardPage() {
   async function fetchInitialData() {
     try {
       setLoading(true);
-      // 🎯 แก้จุดสำคัญ: ดึงข้อมูล products แบบตรงไปตรงมา ไม่ให้โครงสร้าง categories(name) ไปครอบทับจนเพี้ยน
       const { data: pData } = await supabase.from('products').select('*').order('id', { ascending: false });
       const { data: cData } = await supabase.from('categories').select('*').order('name');
       
@@ -79,10 +82,8 @@ export default function UnifiedDashboardPage() {
   async function handleStockAdjust(e: React.FormEvent) {
     e.preventDefault();
     
-    // ดึงค่า ID ที่น้าเลือกจากดรอปดาวน์
     const targetId = String(stockForm.product_id).trim();
     
-    // 🛠️ เครื่องมือดักบั๊ก: ปริ้นท์ค่าออกมาดูเลยว่ามีสินค้าในอาเรย์ไหม และเลือกอะไรมา
     console.log("=== เริ่มตรวจสอบการบันทึกสต็อก ===");
     console.log("ID สินค้าที่น้าเลือกกดส่งมา:", targetId);
     console.log("รายการสินค้าทั้งหมดในเครื่องตอนนี้:", products);
@@ -92,7 +93,6 @@ export default function UnifiedDashboardPage() {
       return;
     }
     
-    // ค้นหาสินค้า (เช็คเผื่อไว้ให้ 2 เวย์เลย ทั้งเช็คแบบ String และเช็คตัวเลข)
     const prod = products.find(p => String(p.id).trim() === targetId || p.id === Number(targetId));
     
     if (!prod) {
@@ -105,7 +105,6 @@ export default function UnifiedDashboardPage() {
       return;
     }
     
-    // บันทึกรายการลงตารางฐานข้อมูล
     const { error } = await supabase.from('stock_transactions').insert([
       { product_id: prod.id, quantity: Number(stockForm.quantity), type: stockForm.type }
     ]);
@@ -115,6 +114,7 @@ export default function UnifiedDashboardPage() {
       return;
     }
     
+    setIsStockDropdownOpen(false);
     setShowStockModal(false);
     fetchInitialData();
   }
@@ -124,6 +124,14 @@ export default function UnifiedDashboardPage() {
     if (filterType === 'LOW') return p.stock_quantity > 0 && p.stock_quantity <= 10;
     return p.stock_quantity <= 10;
   });
+
+  // ✨ ตัวกรองค้นหาสินค้าในกล่องหน้าต่างรับเข้า-จ่ายออกด่วน
+  const filteredStockProducts = products.filter(p =>
+    p.name.toLowerCase().includes(stockProductSearch.toLowerCase()) ||
+    p.sku.toLowerCase().includes(stockProductSearch.toLowerCase())
+  );
+
+  const selectedStockProductDetail = products.find(p => String(p.id) === String(stockForm.product_id));
 
   return (
     <main className="py-6 space-y-6 max-w-6xl mx-auto px-2">
@@ -171,6 +179,7 @@ export default function UnifiedDashboardPage() {
           <button 
             onClick={() => { 
               if(products.length > 0) { 
+                setStockProductSearch(''); // เคลียร์ข้อความพิมพ์ค้นหาอันเก่าออกก่อน
                 setStockForm({ product_id: String(products[0].id), type: 'IN', quantity: 1 }); 
                 setShowStockModal(true); 
               } else { 
@@ -319,28 +328,75 @@ export default function UnifiedDashboardPage() {
         </div>
       )}
 
-      {/* 🟠 MODAL: ระบบรับเข้า-เบิกออกสินค้าด่วน */}
+      {/* 🟠 MODAL: ระบบรับเข้า-เบิกออกสินค้าด่วน (อัปเกรดแบบพิมพ์ค้นหาอัจฉริยะแล้ว ✨) */}
       {showStockModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-100">
+          {/* เพิ่ม overflow-visible เพื่อไม่ให้เมนูดรอปดาวน์ค้นหาโดนกล่องตัดขาดเมื่อเด้งลงมา */}
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-100 overflow-visible">
             <h3 className="text-lg font-bold text-slate-800 border-b pb-3 mb-4">🔄 หน้าทำรายการ รับเข้า / เบิกจ่ายคลัง</h3>
             <form onSubmit={handleStockAdjust} className="space-y-4 text-slate-700 text-left">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">เลือกชิ้นส่วนสินค้า</label>
-                <select 
-                  required 
-                  className="w-full border border-slate-200 bg-white rounded-xl p-2.5 text-sm outline-none font-medium text-slate-800" 
-                  value={stockForm.product_id} 
-                  onChange={e => setStockForm({...stockForm, product_id: e.target.value})}
+              
+              {/* โซนพิมพ์ค้นหาชิ้นส่วนสินค้าแบบลื่นไหล */}
+              <div className="relative">
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">เลือกหรือพิมพ์ค้นหาชิ้นส่วนสินค้า *</label>
+                
+                <div 
+                  className="w-full border border-slate-200 bg-white rounded-xl p-2.5 text-sm flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all"
+                  onClick={() => setIsStockDropdownOpen(!isStockDropdownOpen)}
                 >
-                  <option value="">-- กรุณาเลือกชิ้นส่วน --</option>
-                  {products.map(p => (
-                    <option key={p.id} value={String(p.id)}>
-                      [{p.sku}] {p.name} (คงเหลือ: {p.stock_quantity})
-                    </option>
-                  ))}
-                </select>
+                  <input 
+                    type="text"
+                    className="w-full bg-transparent outline-none font-medium text-slate-800 placeholder-slate-400"
+                    placeholder="🔍 พิมพ์ชื่อชิ้นส่วน หรือ รหัส SKU..."
+                    value={stockProductSearch}
+                    onChange={(e) => {
+                      setStockProductSearch(e.target.value);
+                      setIsStockDropdownOpen(true);
+                    }}
+                    onClick={(e) => e.stopPropagation()} // ดักไม่ให้หน้าต่างปิดเวลากดพิมพ์ช่องนี้
+                  />
+                  <span className="text-slate-400 text-xs ml-2">🔽</span>
+                </div>
+
+                {/* โชว์สินค้าตัวที่เลือกปัจจุบันแบบชัด ๆ */}
+                {selectedStockProductDetail && (
+                  <p className="text-xs font-bold text-blue-600 mt-1 bg-blue-50/70 px-2 py-1 rounded-lg inline-block">
+                    🎯 เลือกอยู่: [{selectedStockProductDetail.sku}] {selectedStockProductDetail.name} (คงเหลือ: {selectedStockProductDetail.stock_quantity} ชิ้น)
+                  </p>
+                )}
+
+                {/* รายการตัวเลือกที่ฟิลเตอร์แล้วจะโผล่ตรงนี้ */}
+                {isStockDropdownOpen && (
+                  <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto divide-y divide-slate-50">
+                    {filteredStockProducts.length > 0 ? (
+                      filteredStockProducts.map(p => (
+                        <div 
+                          key={p.id}
+                          className={`p-2.5 text-xs font-medium cursor-pointer transition-colors text-left flex justify-between items-center ${
+                            String(stockForm.product_id) === String(p.id) ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                          onClick={() => {
+                            setStockForm({...stockForm, product_id: String(p.id)});
+                            setStockProductSearch(''); // คืนค่าความสะอาดให้กล่องพิมพ์
+                            setIsStockDropdownOpen(false); // สั่งพับเมนูเก็บ
+                          }}
+                        >
+                          <div>
+                            <span className="font-mono text-slate-400 block text-[10px]">SKU: {p.sku}</span>
+                            <span className="text-slate-900 font-bold text-sm block">{p.name}</span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded font-bold ${p.stock_quantity === 0 ? 'bg-red-50 text-red-600':'bg-slate-100 text-slate-600'}`}>
+                            คลัง: {p.stock_quantity}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-4 text-center text-xs text-slate-400">❌ ไม่พบชื่อสินค้าอุปกรณ์ชิ้นนี้ในคลัง</div>
+                    )}
+                  </div>
+                )}
               </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ประเภทธุรกรรม</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -353,7 +409,16 @@ export default function UnifiedDashboardPage() {
                 <input type="number" min={1} required className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none font-bold text-slate-800" value={stockForm.quantity} onChange={e => setStockForm({...stockForm, quantity: Math.max(1, Number(e.target.value))})} />
               </div>
               <div className="flex gap-2 justify-end pt-4 border-t mt-6">
-                <button type="button" onClick={() => setShowStockModal(false)} className="px-4 py-2 border rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50">ปิดหน้านี้</button>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setIsStockDropdownOpen(false);
+                    setShowStockModal(false);
+                  }} 
+                  className="px-4 py-2 border rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  ปิดหน้านี้
+                </button>
                 <button type="submit" className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-bold">ยืนยันทำรายการ</button>
               </div>
             </form>
