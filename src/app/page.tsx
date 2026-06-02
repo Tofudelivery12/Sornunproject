@@ -18,7 +18,7 @@ export default function UnifiedDashboardPage() {
   const [showStockModal, setShowStockModal] = useState(false);
   const [stockForm, setStockForm] = useState({ product_id: '', type: 'IN', quantity: 1 });
 
-  // 🎯 State สำหรับคุมป็อปอัป "หน้ารายงานของใกล้หมด/หมดคลัง" และเก็บประเภทที่จะฟิลเตอร์
+  // State สำหรับคุมป็อปอัป "หน้ารายงานของใกล้หมด/หมดคลัง"
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [filterType, setFilterType] = useState<'ALL' | 'LOW' | 'OUT'>('ALL');
 
@@ -29,7 +29,8 @@ export default function UnifiedDashboardPage() {
   async function fetchInitialData() {
     try {
       setLoading(true);
-      const { data: pData } = await supabase.from('products').select('*, categories(name)').order('id', { ascending: false });
+      // 🎯 แก้จุดสำคัญ: ดึงข้อมูล products แบบตรงไปตรงมา ไม่ให้โครงสร้าง categories(name) ไปครอบทับจนเพี้ยน
+      const { data: pData } = await supabase.from('products').select('*').order('id', { ascending: false });
       const { data: cData } = await supabase.from('categories').select('*').order('name');
       
       if (pData) {
@@ -43,7 +44,7 @@ export default function UnifiedDashboardPage() {
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false); // 🎯 แก้จุดบั๊กที่ 1: ปลดสถานะ loading ออกให้ถูกต้องเสมอ
+      setLoading(false);
     }
   }
 
@@ -78,36 +79,50 @@ export default function UnifiedDashboardPage() {
   async function handleStockAdjust(e: React.FormEvent) {
     e.preventDefault();
     
-    const selectedId = String(stockForm.product_id).trim();
+    // ดึงค่า ID ที่น้าเลือกจากดรอปดาวน์
+    const targetId = String(stockForm.product_id).trim();
     
-    if (!selectedId || selectedId === '') {
+    // 🛠️ เครื่องมือดักบั๊ก: ปริ้นท์ค่าออกมาดูเลยว่ามีสินค้าในอาเรย์ไหม และเลือกอะไรมา
+    console.log("=== เริ่มตรวจสอบการบันทึกสต็อก ===");
+    console.log("ID สินค้าที่น้าเลือกกดส่งมา:", targetId);
+    console.log("รายการสินค้าทั้งหมดในเครื่องตอนนี้:", products);
+
+    if (!targetId || targetId === '') {
       alert('❌ กรุณาเลือกชิ้นส่วนสินค้าจากรายการก่อนทำรายการครับ');
       return;
     }
     
-    // 🎯 แก้จุดบั๊กที่ 2: ใช้การจับคู่แบบครอบ String และตัดช่องว่างทั้งหมด ป้องกันประเภทข้อมูลเพี้ยน
-    const prod = products.find(p => String(p.id).trim() === selectedId);
+    // ค้นหาสินค้า (เช็คเผื่อไว้ให้ 2 เวย์เลย ทั้งเช็คแบบ String และเช็คตัวเลข)
+    const prod = products.find(p => String(p.id).trim() === targetId || p.id === Number(targetId));
     
     if (!prod) {
-      alert('❌ ไม่พบข้อมูลสินค้าชิ้นนี้ในระบบคลัง');
+      alert(`❌ ไม่พบข้อมูลสินค้าชิ้นนี้ในระบบคลัง\n(ระบบอ่านค่า ID ที่น้าเลือกได้เป็น: "${targetId}")`);
       return;
     }
     
     if (stockForm.type === 'OUT' && prod.stock_quantity < stockForm.quantity) {
-      alert('❌ ของในสต็อกมีไม่พอให้เบิกออกครับ!');
+      alert(`❌ ของในสต็อกมีไม่พอให้เบิกออกครับ!\n(ในคลังเหลืออยู่ ${prod.stock_quantity} ชิ้น แต่จะเบิกออก ${stockForm.quantity} ชิ้น)`);
       return;
     }
     
-    await supabase.from('stock_transactions').insert([{ product_id: prod.id, quantity: stockForm.quantity, type: stockForm.type }]);
+    // บันทึกรายการลงตารางฐานข้อมูล
+    const { error } = await supabase.from('stock_transactions').insert([
+      { product_id: prod.id, quantity: Number(stockForm.quantity), type: stockForm.type }
+    ]);
+
+    if (error) {
+      alert(`❌ เกิดข้อผิดพลาดจากฐานข้อมูล: ${error.message}`);
+      return;
+    }
+    
     setShowStockModal(false);
     fetchInitialData();
   }
 
-  // ฟังก์ชันช่วยคัดกรองข้อมูลอุปกรณ์ที่ตรงตามเงื่อนไขเพื่อไปโชว์ในป็อปอัปใบสั่งของ
   const reportProducts = products.filter(p => {
     if (filterType === 'OUT') return p.stock_quantity === 0;
     if (filterType === 'LOW') return p.stock_quantity > 0 && p.stock_quantity <= 10;
-    return p.stock_quantity <= 10; // 'ALL' คือเอาทั้งสองอย่าง
+    return p.stock_quantity <= 10;
   });
 
   return (
@@ -115,7 +130,6 @@ export default function UnifiedDashboardPage() {
       
       {/* 📊 ZONE 1: DASHBOARD CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* รายการทั้งหมด */}
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">สินค้าทั้งหมดในสต็อก</p>
@@ -124,7 +138,6 @@ export default function UnifiedDashboardPage() {
           <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-lg">📦</div>
         </div>
 
-        {/* ปุ่มสต็อกใกล้หมด */}
         <div 
           onClick={() => { setFilterType('LOW'); setShowOrderModal(true); }}
           className="bg-amber-50/60 p-5 rounded-2xl shadow-sm border border-amber-200 flex items-center justify-between cursor-pointer hover:bg-amber-100/70 transition-all"
@@ -136,7 +149,6 @@ export default function UnifiedDashboardPage() {
           <div className="w-10 h-10 bg-amber-500 text-white rounded-xl flex items-center justify-center text-lg shadow-sm animate-pulse">⚠️</div>
         </div>
 
-        {/* ปุ่มสินค้าหมดคลัง */}
         <div 
           onClick={() => { setFilterType('OUT'); setShowOrderModal(true); }}
           className="bg-red-50/60 p-5 rounded-2xl shadow-sm border border-red-200 flex items-center justify-between cursor-pointer hover:bg-red-100/70 transition-all"
@@ -159,7 +171,6 @@ export default function UnifiedDashboardPage() {
           <button 
             onClick={() => { 
               if(products.length > 0) { 
-                // 🎯 แก้จุดบั๊กที่ 3: เลือกไอดีของสินค้าตัวแรกในอาเรย์มารองรับไว้เป็นดีฟอลต์ ไม่ปล่อยให้เป็นค่าว่างเปล่า
                 setStockForm({ product_id: String(products[0].id), type: 'IN', quantity: 1 }); 
                 setShowStockModal(true); 
               } else { 
@@ -193,18 +204,17 @@ export default function UnifiedDashboardPage() {
         )}
       </div>
 
-      {/* 🖼️ ป็อปอัป (Modal): สรุปรายงานตัวช่วยสั่งซื้ออุปกรณ์ */}
+      {/* ป็อปอัป (Modal): รายงานจัดซื้อ */}
       {showOrderModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
             <div className="p-5 border-b flex justify-between items-center bg-slate-50 rounded-t-2xl">
               <div>
                 <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">🛒 สรุปรายการอุปกรณ์ที่ต้องจัดซื้อเติมสต็อก</h3>
-                <p className="text-xs text-slate-400 mt-0.5">แสดงเฉพาะรายการที่มีระดับสินค้าวิกฤต (น้อยกว่าหรือเท่ากับ 10 ชิ้น)</p>
+                <p className="text-xs text-slate-400 mt-0.5">แสดงเฉพาะรายการที่มีระดับสินค้าวิกฤต</p>
               </div>
               <button onClick={() => setShowOrderModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold p-1">✕</button>
             </div>
-
             <div className="p-5 overflow-y-auto flex-1">
               {reportProducts.length === 0 ? (
                 <div className="text-center py-12 text-slate-400 text-sm">🎉 สบายใจได้! ไม่มีรายการอุปกรณ์ที่ตรงตามเงื่อนไขนี้เลยครับคลังแน่นๆ</div>
@@ -215,7 +225,7 @@ export default function UnifiedDashboardPage() {
                       <tr>
                         <th className="p-3">ชื่อชิ้นส่วน / SKU</th>
                         <th className="p-3 text-center">คงเหลือปัจจุบัน</th>
-                        <th className="p-3">ร้านค้า / ลิงก์ช่องทางสั่งซื้ออุปกรณ์</th>
+                        <th className="p-3">ร้านค้า</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -236,7 +246,7 @@ export default function UnifiedDashboardPage() {
                                 🛒 {item.supplier_name || 'ลิงก์ไปสั่งซื้อของ'} <span className="text-[10px]">↗</span>
                               </a>
                             ) : (
-                              <span className="text-slate-400 italic text-xs">{item.supplier_name ? `🏪 ${item.supplier_name} (ไม่ได้ลงลิงก์ไว้)` : 'ไม่ได้ระบุข้อมูลร้าน'}</span>
+                              <span className="text-slate-400 italic text-xs">{item.supplier_name ? `🏪 ${item.supplier_name}` : 'ไม่ได้ระบุข้อมูลร้าน'}</span>
                             )}
                           </td>
                         </tr>
@@ -246,7 +256,6 @@ export default function UnifiedDashboardPage() {
                 </div>
               )}
             </div>
-
             <div className="p-4 border-t bg-slate-50 rounded-b-2xl flex justify-end">
               <button onClick={() => setShowOrderModal(false)} className="bg-slate-800 text-white hover:bg-slate-900 px-5 py-2 rounded-xl font-bold text-xs transition-colors">ปิดหน้ารายงาน</button>
             </div>
@@ -254,7 +263,7 @@ export default function UnifiedDashboardPage() {
         </div>
       )}
 
-      {/* 🟩 MODAL: เพิ่ม/แก้ไขสินค้า */}
+      {/* MODAL: เพิ่ม/แก้ไขสินค้า */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 border border-slate-100">
