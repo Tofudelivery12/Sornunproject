@@ -19,6 +19,10 @@ export default function UnifiedDashboardPage() {
   const [showStockModal, setShowStockModal] = useState(false);
   const [stockForm, setStockForm] = useState({ product_id: '', type: 'IN', quantity: 1 });
 
+  // ✨ State ใหม่สำหรับควบคุมป็อปอัปดูรายละเอียด (Info)
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<any>(null);
+
   useEffect(() => {
     fetchInitialData();
   }, []);
@@ -26,8 +30,6 @@ export default function UnifiedDashboardPage() {
   async function fetchInitialData() {
     try {
       setLoading(true);
-      // 🎯 แก้จุดที่ 1: เปลี่ยนจาก '*, categories(name)' มาเป็น select('*') แบน ๆ 
-      // เพื่อไม่ให้ object ซ้อนเจาะหาค่าสต็อกยาก และป้องการเกิดบั๊กหาข้อมูลไม่เจอ
       const { data: pData } = await supabase.from('products').select('*').order('id', { ascending: false });
       const { data: cData } = await supabase.from('categories').select('*').order('name');
       
@@ -57,6 +59,12 @@ export default function UnifiedDashboardPage() {
     setShowModal(true);
   }
 
+  // ✨ ฟังก์ชันเปิดดูรายละเอียดสินค้า
+  function openInfo(product: any) {
+    setSelectedProduct(product);
+    setShowInfoModal(true);
+  }
+
   async function handleSaveProduct(e: React.FormEvent) {
     e.preventDefault();
     if (editingId) {
@@ -81,39 +89,29 @@ export default function UnifiedDashboardPage() {
     }
   }
 
-  // 🎯 แก้จุดที่ 2: อัปเกรดตัวหาไอดีสินค้าให้ฉลาดขึ้น รองรับทั้ง String และ Number ชัวร์ 100%
   async function handleStockAdjust(e: React.FormEvent) {
     e.preventDefault();
-    
     const targetId = String(stockForm.product_id).trim();
-    
     if (!targetId || targetId === '') {
       alert('❌ กรุณาเลือกชิ้นส่วนสินค้าจากรายการก่อนทำรายการครับ');
       return;
     }
-    
-    // ค้นหาสินค้าแบบยืดหยุ่น ป้องกันระบบสับสนชนิดข้อมูล
     const prod = products.find(p => String(p.id).trim() === targetId || p.id === Number(targetId));
-    
     if (!prod) {
       alert(`❌ ไม่พบข้อมูลสินค้าชิ้นนี้ในระบบคลัง\n(ระบบอ่านค่า ID ที่เลือกได้เป็น: "${targetId}")`);
       return;
     }
-    
     if (stockForm.type === 'OUT' && prod.stock_quantity < stockForm.quantity) {
       alert(`❌ ของในสต็อกมีไม่พอให้เบิกออกครับ!\n(ในคลังเหลืออยู่ ${prod.stock_quantity} ชิ้น แต่จะเบิกออก ${stockForm.quantity} ชิ้น)`);
       return;
     }
-    
     const { error } = await supabase.from('stock_transactions').insert([
       { product_id: prod.id, quantity: Number(stockForm.quantity), type: stockForm.type }
     ]);
-
     if (error) {
       alert(`❌ เกิดข้อผิดพลาดจากฐานข้อมูล: ${error.message}`);
       return;
     }
-    
     setShowStockModal(false);
     fetchInitialData();
   }
@@ -203,12 +201,21 @@ export default function UnifiedDashboardPage() {
           </thead>
           <tbody className="divide-y divide-slate-100 text-slate-700">
             {filteredProducts.map((product) => {
-              // ดึงชื่อหมวดหมู่จากอาเรย์หลักแทนการดึงแบบ Object ซ้อน
               const matchedCat = categories.find(c => c.id === product.category_id);
               return (
                 <tr key={product.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="p-4 text-center">
-                    <img src={product.image_url || 'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?w=80&auto=format&fit=crop&q=60'} alt={product.name} className="w-10 h-10 object-cover rounded-lg border border-slate-200 mx-auto" />
+                    {/* 🎯 เพิ่มปุ่ม Info มุมขวาบนของรูปในเวอร์ชัน Desktop */}
+                    <div className="relative w-12 h-12 mx-auto">
+                      <img src={product.image_url || 'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?w=80&auto=format&fit=crop&q=60'} alt={product.name} className="w-12 h-12 object-cover rounded-lg border border-slate-200" />
+                      <button 
+                        onClick={() => openInfo(product)}
+                        title="ดูรายละเอียดข้อมูล"
+                        className="absolute -top-1.5 -right-1.5 bg-slate-800 text-white hover:bg-blue-600 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shadow-md transition-colors"
+                      >
+                        ℹ️
+                      </button>
+                    </div>
                   </td>
                   <td className="p-4">
                     <span className="text-slate-800 font-bold block text-base">{product.name}</span>
@@ -242,8 +249,17 @@ export default function UnifiedDashboardPage() {
           const matchedCat = categories.find(c => c.id === product.category_id);
           return (
             <div key={product.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-3">
-              <div className="flex gap-3">
-                <img src={product.image_url || 'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?w=80&auto=format&fit=crop&q=60'} alt={product.name} className="w-14 h-14 object-cover rounded-xl border border-slate-200 bg-slate-50" />
+              <div className="flex gap-3 relative">
+                {/* 🎯 เพิ่มปุ่ม Info มุมขวาบนของรูปในเวอร์ชันมือถือ */}
+                <div className="relative w-16 h-16 flex-shrink-0">
+                  <img src={product.image_url || 'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?w=80&auto=format&fit=crop&q=60'} alt={product.name} className="w-16 h-16 object-cover rounded-xl border border-slate-200 bg-slate-50" />
+                  <button 
+                    onClick={() => openInfo(product)}
+                    className="absolute -top-1.5 -right-1.5 bg-slate-800 text-white hover:bg-blue-600 w-5.5 h-5.5 rounded-full flex items-center justify-center text-[10px] font-bold shadow-md transition-colors border border-white"
+                  >
+                    ℹ️
+                  </button>
+                </div>
                 <div className="flex-1 min-w-0">
                   <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded text-[10px] font-bold">{matchedCat ? matchedCat.name : 'ทั่วไป'}</span>
                   <span className="text-slate-800 font-bold block text-sm truncate mt-0.5">{product.name}</span>
@@ -367,6 +383,88 @@ export default function UnifiedDashboardPage() {
                 <button type="submit" className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-bold">ยืนยันทำรายการ</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 🔵 ✨ MODAL ใหม่: หน้าต่างแสดงรายละเอียดสินค้า (Info Modal) */}
+      {showInfoModal && selectedProduct && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+            
+            {/* ส่วนหัวการ์ดและรูปภาพ */}
+            <div className="relative bg-slate-900 h-48 flex items-center justify-center">
+              <img 
+                src={selectedProduct.image_url || 'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?w=400&auto=format&fit=crop&q=60'} 
+                alt={selectedProduct.name} 
+                className="w-full h-full object-cover opacity-60 absolute inset-0"
+              />
+              <div className="relative z-10 text-center px-4">
+                <span className="bg-blue-600 text-white px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider">
+                  {categories.find(c => c.id === selectedProduct.category_id)?.name || 'ทั่วไป'}
+                </span>
+                <h3 className="text-white font-extrabold text-xl mt-1.5 drop-shadow-md truncate max-w-xs">{selectedProduct.name}</h3>
+                <p className="font-mono text-xs text-slate-200 mt-0.5 tracking-wide drop-shadow-sm">SKU: {selectedProduct.sku}</p>
+              </div>
+              <button 
+                onClick={() => setShowInfoModal(false)} 
+                className="absolute top-3 right-3 bg-white/20 text-white hover:bg-white/40 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-colors backdrop-blur-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* ส่วนแสดงข้อมูลดีเทล */}
+            <div className="p-5 space-y-4 text-slate-700 text-left bg-white">
+              <div className="grid grid-cols-2 gap-4 border-b border-slate-100 pb-3">
+                <div>
+                  <span className="text-[11px] font-bold text-slate-400 block uppercase">ราคาต่อหน่วย</span>
+                  <span className="text-lg font-extrabold text-slate-800">{Number(selectedProduct.price).toLocaleString()} บาท</span>
+                </div>
+                <div>
+                  <span className="text-[11px] font-bold text-slate-400 block uppercase">คงเหลือในคลัง</span>
+                  <span className={`text-base font-extrabold block mt-0.5 ${selectedProduct.stock_quantity === 0 ? 'text-red-600' : selectedProduct.stock_quantity <= 10 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                    {selectedProduct.stock_quantity} ชิ้น
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <span className="text-[11px] font-bold text-slate-400 block uppercase">ร้านค้าผู้จัดจำหน่าย (Supplier)</span>
+                  <span className="text-sm font-semibold text-slate-700 block mt-0.5">
+                    🏢 {selectedProduct.supplier_name || <span className="text-slate-400 font-normal italic">ไม่ได้ระบุข้อมูลชื่อร้าน</span>}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-[11px] font-bold text-slate-400 block uppercase">ลิงก์สั่งซื้อ / ติดต่อร้านค้า</span>
+                  {selectedProduct.supplier_link ? (
+                    <a 
+                      href={selectedProduct.supplier_link} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="inline-flex items-center gap-1.5 text-sm font-bold text-blue-600 hover:text-blue-800 hover:underline mt-1 bg-blue-50 px-3 py-1.5 rounded-xl transition-all"
+                    >
+                      🛒 ไปยังหน้าร้านค้าสั่งของเพิ่ม <span className="text-xs">↗</span>
+                    </a>
+                  ) : (
+                    <span className="text-xs text-slate-400 font-normal italic block mt-1">🔗 ไม่มีลิงก์หน้าร้านผูกไว้ในระบบ</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* ปุ่มปิดด้านล่าง */}
+            <div className="p-4 border-t bg-slate-50 flex justify-end">
+              <button 
+                onClick={() => setShowInfoModal(false)} 
+                className="bg-slate-800 text-white hover:bg-slate-900 px-5 py-2 rounded-xl text-xs font-bold transition-colors shadow-sm"
+              >
+                ปิดหน้าต่างนี้
+              </button>
+            </div>
+
           </div>
         </div>
       )}
