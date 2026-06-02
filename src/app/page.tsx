@@ -18,7 +18,7 @@ export default function UnifiedDashboardPage() {
   const [showStockModal, setShowStockModal] = useState(false);
   const [stockForm, setStockForm] = useState({ product_id: '', type: 'IN', quantity: 1 });
 
-  // 🎯 เพิ่ม State สำหรับคุมป็อปอัป "หน้ารายงานของใกล้หมด/หมดคลัง" และเก็บประเภทที่จะฟิลเตอร์
+  // 🎯 State สำหรับคุมป็อปอัป "หน้ารายงานของใกล้หมด/หมดคลัง" และเก็บประเภทที่จะฟิลเตอร์
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [filterType, setFilterType] = useState<'ALL' | 'LOW' | 'OUT'>('ALL');
 
@@ -90,7 +90,7 @@ export default function UnifiedDashboardPage() {
     fetchInitialData();
   }
 
-  // 🎯 ฟังก์ชันช่วยคัดกรองข้อมูลอุปกรณ์ที่ตรงตามเงื่อนไขเพื่อไปโชว์ในป็อปอัปใบสั่งของ
+  // ฟังก์ชันช่วยคัดกรองข้อมูลอุปกรณ์ที่ตรงตามเงื่อนไขเพื่อไปโชว์ในป็อปอัปใบสั่งของ
   const reportProducts = products.filter(p => {
     if (filterType === 'OUT') return p.stock_quantity === 0;
     if (filterType === 'LOW') return p.stock_quantity > 0 && p.stock_quantity <= 10;
@@ -100,10 +100,10 @@ export default function UnifiedDashboardPage() {
   return (
     <main className="py-6 space-y-6 max-w-6xl mx-auto px-2">
       
-      {/* 📊 ZONE 1: DASHBOARD CARDS (ปรับให้สะอาดตา และคลิกเปิดดูรายงานด่วนได้) */}
+      {/* 📊 ZONE 1: DASHBOARD CARDS (คลิกเปิดดูรายงานสั่งซื้อได้ด่วน) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         
-        {/* รายการทั้งหมด (ดูภาพรวมอย่างเดียว) */}
+        {/* รายการทั้งหมด */}
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">สินค้าทั้งหมดในสต็อก</p>
@@ -112,7 +112,7 @@ export default function UnifiedDashboardPage() {
           <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-lg">📦</div>
         </div>
 
-        {/* ปุ่มสต็อกใกล้หมด -> กดเพื่อสั่งซื้อของ */}
+        {/* ปุ่มสต็อกใกล้หมด */}
         <div 
           onClick={() => { setFilterType('LOW'); setShowOrderModal(true); }}
           className="bg-amber-50/60 p-5 rounded-2xl shadow-sm border border-amber-200 flex items-center justify-between cursor-pointer hover:bg-amber-100/70 transition-all"
@@ -124,7 +124,7 @@ export default function UnifiedDashboardPage() {
           <div className="w-10 h-10 bg-amber-500 text-white rounded-xl flex items-center justify-center text-lg shadow-sm animate-pulse">⚠️</div>
         </div>
 
-        {/* ปุ่มสินค้าหมดคลัง -> กดเพื่อสั่งซื้อของ */}
+        {/* ปุ่มสินค้าหมดคลัง */}
         <div 
           onClick={() => { setFilterType('OUT'); setShowOrderModal(true); }}
           className="bg-red-50/60 p-5 rounded-2xl shadow-sm border border-red-200 flex items-center justify-between cursor-pointer hover:bg-red-100/70 transition-all"
@@ -137,11 +137,11 @@ export default function UnifiedDashboardPage() {
         </div>
       </div>
 
-      {/* 🏪 ZONE 2: HEADER CONTROL */}
+      {/* 🏪 ZONE 2: HEADER CONTROL (เปลี่ยนชื่อเป็น Sornun Stock ให้แล้วครับ!) */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-slate-800">ระบบจัดการคลังสินค้าอัจฉริยะ</h1>
-          <p className="text-xs md:text-sm text-slate-500 mt-0.5">ภาพรวมคลังอุปกรณ์อิเล็กทรอนิกส์และการควบคุมแบบ Real-time</p>
+          <h1 className="text-xl md:text-2xl font-bold text-slate-800 tracking-tight">Sornun Stock อัจฉริยะ</h1>
+          <p className="text-xs md:text-sm text-slate-500 mt-0.5">ระบบควบคุมคลังสินค้าและสรุปรายงานจัดซื้อส่วนตัวของคุณ Sornun</p>
         </div>
         <div className="flex gap-2 w-full md:w-auto">
           <button 
@@ -163,12 +163,12 @@ export default function UnifiedDashboardPage() {
         </div>
       </div>
 
-      {/* 📉 ZONE 3: พื้นที่หน้าหลักของ Dashboard (จัดหน้าโล่งสวย สะอาดตา ไม่รกด้วยตารางเดิม) */}
+      {/* 📉 ZONE 3: พื้นที่หน้าหลักของ Dashboard (สไตล์คลีน สบายตา) */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center flex flex-col items-center justify-center min-h-[250px]">
         <div className="text-4xl mb-3">📊</div>
-        <h3 className="text-base font-bold text-slate-700">ยินดีต้อนรับเข้าสู่ระบบจัดการสต็อกอัจฉริยะ</h3>
+        <h3 className="text-base font-bold text-slate-700">ยินดีต้อนรับเข้าสู่ระบบ Sornun Stock</h3>
         <p className="text-xs text-slate-400 max-w-sm mt-1 leading-relaxed">
-          หน้านี้จะแสดงเฉพาะสถิติสำคัญเพื่อความสะอาดตา หากต้องการดูรายการสินค้าทั้งหมดหรือแก้ไข ลบ ข้อมูล สามารถคลิกเลือกที่แท็บเมนู <strong className="text-slate-600">"คลังสินค้า (CRUD)"</strong> ด้านบนได้เลยครับ
+          หน้านี้แสดงสถิติสำคัญแบบองค์รวมเพื่อความเป็นระเบียบ หากต้องการจัดการ เพิ่ม ลบ หรือแก้ไขข้อมูล สามารถกดเลือกใช้งานได้จากแท็บเมนู <strong className="text-slate-600">"คลังสินค้า (CRUD)"</strong> ด้านบนได้เลยครับ
         </p>
         {(stats.low > 0 || stats.out > 0) && (
           <button 
@@ -181,7 +181,7 @@ export default function UnifiedDashboardPage() {
       </div>
 
 
-      {/* 🖼️ 💳 ป็อปอัปใหม่ (Modal): สรุปรายงานตัวช่วยสั่งซื้ออุปกรณ์ที่หมดหรือใกล้หมดสต็อก */}
+      {/* 🖼️ ป็อปอัป (Modal): สรุปรายงานตัวช่วยสั่งซื้ออุปกรณ์ที่หมดหรือใกล้หมดสต็อก */}
       {showOrderModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
@@ -269,7 +269,7 @@ export default function UnifiedDashboardPage() {
       )}
 
 
-      {/* 🟩 MODAL: เพิ่ม/แก้ไขสินค้า (เก็บโครงสร้างเดิมของคุณไว้ครบถ้วน) */}
+      {/* 🟩 MODAL: เพิ่ม/แก้ไขสินค้า (คงเดิมไว้สมบูรณ์) */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 border border-slate-100">
@@ -327,7 +327,7 @@ export default function UnifiedDashboardPage() {
         </div>
       )}
 
-      {/* 🟠 MODAL: ระบบรับเข้า-เบิกออกสินค้าด่วน (เก็บโครงสร้างเดิมของคุณไว้ครบถ้วน) */}
+      {/* 🟠 MODAL: ระบบรับเข้า-เบิกออกสินค้าด่วน (คงเดิมไว้สมบูรณ์) */}
       {showStockModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-100">
