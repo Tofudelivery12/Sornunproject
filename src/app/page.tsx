@@ -56,6 +56,7 @@ export default function UnifiedDashboardPage() {
       if (pData) {
         setProducts(pData);
         const totalProducts = pData.length;
+        // 🛠️ แก้ไขจุดที่ 1: ปรับเงื่อนไขสถิติด้านบนเป็นล็อตคงเหลือ <= 25 ชิ้นตามที่น้าตั้งใจ
         const lowStock = pData.filter(p => p.stock_quantity > 0 && p.stock_quantity <= 25).length;
         const outOfStock = pData.filter(p => p.stock_quantity === 0).length;
         setStats({ total: totalProducts, low: lowStock, out: outOfStock });
@@ -81,22 +82,17 @@ export default function UnifiedDashboardPage() {
   }
 
   async function handleSaveProduct(e: React.FormEvent) {
-  e.preventDefault();
-  if (editingId) {
-    // กรณีแก้ไขข้อมูลสินค้าทั่วไป
-    const payload = { ...form, category_id: form.category_id ? Number(form.category_id) : null };
-    await supabase.from('products').update(payload).eq('id', editingId);
-  } else {
-    // กรณีเพิ่มสินค้าใหม่: ให้ตั้งยอดสต็อกเริ่มต้นในตาราง products เป็นค่าที่กรอกได้เลย 
-    // และให้ระบบ Trigger หลังบ้านทำหน้าที่สร้างประวัติหรือคำนวณเองอย่างถูกต้อง
-    const payload = { ...form, category_id: form.category_id ? Number(form.category_id) : null, stock_quantity: Number(form.stock_quantity) };
-    const { data } = await supabase.from('products').insert([payload]).select();
-    
-    // ตัดบรรปัดที่สั่ง insert ลง stock_transactions ซ้อนออกไป เพื่อไม่ให้ยอดเบิ้ลตอนสร้างสินค้าใหม่
+    e.preventDefault();
+    if (editingId) {
+      const payload = { ...form, category_id: form.category_id ? Number(form.category_id) : null };
+      await supabase.from('products').update(payload).eq('id', editingId);
+    } else {
+      const payload = { ...form, category_id: form.category_id ? Number(form.category_id) : null, stock_quantity: Number(form.stock_quantity) };
+      await supabase.from('products').insert([payload]).select();
+    }
+    setShowModal(false);
+    fetchInitialData();
   }
-  setShowModal(false);
-  fetchInitialData();
-}
 
   async function handleStockAdjust(e: React.FormEvent) {
     e.preventDefault();
@@ -133,7 +129,6 @@ export default function UnifiedDashboardPage() {
     fetchInitialData();
   }
 
-  // ✨ แก้ไขจุดที่ 2: เปลี่ยนวิธีล้างประวัติใหม่ ไม่ให้ติดขัดเรื่องข้อมูลแบบ UUID
   async function handleClearHistory() {
     const confirmFirst = confirm("⚠️ น้าแน่ใจไหมครับที่จะล้างประวัติการเบิกและเพิ่มสินค้าทั้งหมด?\n(ข้อมูลประวัติการทำรายการจะหายหมด แต่ยอดสินค้าคงเหลือในคลังจะยังอยู่เหมือนเดิมครับ)");
     if (!confirmFirst) return;
@@ -143,7 +138,6 @@ export default function UnifiedDashboardPage() {
 
     try {
       setLoading(true);
-      // ใช้เงื่อนไขสร้างการลบที่ปลอดภัยกับคอลัมน์วันเวลา ป้องกัน Error UUID ทับซ้อน
       const { error } = await supabase
         .from('stock_transactions')
         .delete()
@@ -164,15 +158,15 @@ export default function UnifiedDashboardPage() {
     }
   }
 
-  // ✨ ฟังก์ชันกดพิมพ์เป็น PDF ดึงเฉพาะส่วนประวัติออกมา
   function handleExportPDF() {
     window.print();
   }
 
+  // 🛠️ แก้ไขจุดที่ 2: ปรับปรุงเงื่อนไขกรองหน้ารายงาน (Modal) ให้ดักจับเลข <= 25 ให้สอดคล้องกันทั้งหมด
   const reportProducts = products.filter(p => {
     if (filterType === 'OUT') return p.stock_quantity === 0;
-    if (filterType === 'LOW') return p.stock_quantity > 0 && p.stock_quantity <= 10;
-    return p.stock_quantity <= 10;
+    if (filterType === 'LOW') return p.stock_quantity > 0 && p.stock_quantity <= 25;
+    return p.stock_quantity <= 25;
   });
 
   const filteredStockProducts = products.filter(p =>
@@ -185,7 +179,7 @@ export default function UnifiedDashboardPage() {
   return (
     <main className="py-6 space-y-6 max-w-6xl mx-auto px-2">
       
-      {/* 📊 ZONE 1: DASHBOARD CARDS (จะถูกซ่อนเวลาสั่ง Print PDF) */}
+      {/* 📊 ZONE 1: DASHBOARD CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 print:hidden">
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
           <div>
@@ -195,12 +189,13 @@ export default function UnifiedDashboardPage() {
           <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-lg">📦</div>
         </div>
 
+        {/* 🛠️ แก้ไขจุดที่ 3: แก้ไขข้อความป้ายกำกับหัวการ์ดให้แสดงตัวเลข (≤ 25) สวยงามตรงความจริง */}
         <div 
           onClick={() => { setFilterType('LOW'); setShowOrderModal(true); }}
           className="bg-amber-50/60 p-5 rounded-2xl shadow-sm border border-amber-200 flex items-center justify-between cursor-pointer hover:bg-amber-100/70 transition-all"
         >
           <div>
-            <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">สต็อกใกล้หมด (≤ 10) ↗</p>
+            <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">สต็อกใกล้หมด (≤ 25) ↗</p>
             <p className="text-2xl font-extrabold text-amber-600 mt-1">{stats.low} <span className="text-xs font-normal text-slate-500">รายการ</span></p>
           </div>
           <div className="w-10 h-10 bg-amber-500 text-white rounded-xl flex items-center justify-center text-lg shadow-sm animate-pulse">⚠️</div>
@@ -264,7 +259,7 @@ export default function UnifiedDashboardPage() {
         )}
       </div>
 
-      {/* 📜 ZONE 4: ระบบประวัติเบิกจ่ายและเพิ่มอุปกรณ์ + ออกรายงาน PDF */}
+      {/* 📜 ZONE 4: ระบบประวัติเบิกจ่าย */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-4 overflow-visible print:border-none print:shadow-none print:p-0">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b pb-4">
           <div>
@@ -275,7 +270,6 @@ export default function UnifiedDashboardPage() {
             <p className="text-xs text-slate-500 mt-0.5 hidden print:block">พิมพ์รายงานวันที่: {new Date().toLocaleDateString('th-TH')} เวลา {new Date().toLocaleTimeString('th-TH')}</p>
           </div>
           
-          {/* ปุ่มควบคุมประวัติ (จะถูกซ่อนอัตโนมัติเวลาสั่งพิมพ์) */}
           <div className="flex gap-2 w-full sm:w-auto print:hidden">
             <button 
               type="button"
@@ -294,7 +288,6 @@ export default function UnifiedDashboardPage() {
           </div>
         </div>
 
-        {/* ตารางข้อมูลประวัติ */}
         <div className="overflow-x-auto border border-slate-100 rounded-xl print:border-slate-300">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-500 font-bold text-xs uppercase border-b border-slate-100 print:bg-slate-100 print:border-slate-300">
@@ -353,7 +346,6 @@ export default function UnifiedDashboardPage() {
         </div>
       </div>
 
-      {/* CSS ดักการทำงานตอนกด Print PDF (ซ่อนหน้าต่างและ UI ส่วนเกินให้คลีนที่สุด) */}
       <style jsx global>{`
         @media print {
           body {
@@ -377,7 +369,8 @@ export default function UnifiedDashboardPage() {
             <div className="p-5 border-b flex justify-between items-center bg-slate-50 rounded-t-2xl">
               <div>
                 <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">🛒 สรุปรายการอุปกรณ์ที่ต้องจัดซื้อเติมสต็อก</h3>
-                <p className="text-xs text-slate-400 mt-0.5">แสดงเฉพาะรายการที่มีระดับสินค้าวิกฤต</p>
+                {/* 🛠️ แก้ไขจุดที่ 4: เปลี่ยนข้อความในป๊อปอัปรายงานแจ้งเตือนวิกฤตให้ตรงเลข 25 */}
+                <p className="text-xs text-slate-400 mt-0.5">แสดงรายชื่อสินค้าที่คงเหลือต่ำกว่าหรือเท่ากับ 25 ชิ้น</p>
               </div>
               <button onClick={() => setShowOrderModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold p-1">✕</button>
             </div>
@@ -402,7 +395,8 @@ export default function UnifiedDashboardPage() {
                             <span className="font-mono text-[11px] text-slate-400">SKU: {item.sku}</span>
                           </td>
                           <td className="p-3 text-center">
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${item.stock_quantity === 0 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
+                            {/* 🛠️ แก้ไขจุดที่ 5: ปรับสีพื้นหลังแถบแจ้งเตือนในตารางป๊อปอัปให้แสดงสีส้มเตือนเมื่อต่ำกว่า 25 ชิ้น */}
+                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${item.stock_quantity === 0 ? 'bg-red-50 text-red-600' : item.stock_quantity <= 25 ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-600'}`}>
                               {item.stock_quantity} ชิ้น
                             </span>
                           </td>
