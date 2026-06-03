@@ -81,21 +81,22 @@ export default function UnifiedDashboardPage() {
   }
 
   async function handleSaveProduct(e: React.FormEvent) {
-    e.preventDefault();
-    if (editingId) {
-      const payload = { ...form, category_id: form.category_id ? Number(form.category_id) : null };
-      await supabase.from('products').update(payload).eq('id', editingId);
-    } else {
-      const payload = { ...form, category_id: form.category_id ? Number(form.category_id) : null, stock_quantity: 0 };
-      const { data } = await supabase.from('products').insert([payload]).select();
-      
-      if (data && data[0] && form.stock_quantity > 0) {
-        await supabase.from('stock_transactions').insert([{ product_id: data[0].id, quantity: form.stock_quantity, type: 'IN' }]);
-      }
-    }
-    setShowModal(false);
-    fetchInitialData();
+  e.preventDefault();
+  if (editingId) {
+    // กรณีแก้ไขข้อมูลสินค้าทั่วไป
+    const payload = { ...form, category_id: form.category_id ? Number(form.category_id) : null };
+    await supabase.from('products').update(payload).eq('id', editingId);
+  } else {
+    // กรณีเพิ่มสินค้าใหม่: ให้ตั้งยอดสต็อกเริ่มต้นในตาราง products เป็นค่าที่กรอกได้เลย 
+    // และให้ระบบ Trigger หลังบ้านทำหน้าที่สร้างประวัติหรือคำนวณเองอย่างถูกต้อง
+    const payload = { ...form, category_id: form.category_id ? Number(form.category_id) : null, stock_quantity: Number(form.stock_quantity) };
+    const { data } = await supabase.from('products').insert([payload]).select();
+    
+    // ตัดบรรปัดที่สั่ง insert ลง stock_transactions ซ้อนออกไป เพื่อไม่ให้ยอดเบิ้ลตอนสร้างสินค้าใหม่
   }
+  setShowModal(false);
+  fetchInitialData();
+}
 
   async function handleStockAdjust(e: React.FormEvent) {
     e.preventDefault();
