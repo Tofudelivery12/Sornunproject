@@ -37,7 +37,7 @@ export default function UnifiedDashboardPage() {
       const { data: pData } = await supabase.from('products').select('*').order('id', { ascending: false });
       const { data: cData } = await supabase.from('categories').select('*').order('name');
       
-      // ✨ ดึงข้อมูลประวัติการทำรายการพ่วงชื่อสินค้ามาด้วย
+      // ✨ แก้ไขจุดที่ 1: สั่งเรียงประวัติการทำรายการตาม 'created_at' จากใหม่ไปเก่า เพื่อไม่ให้สลับกันมั่วครับ
       const { data: tData } = await supabase
         .from('stock_transactions')
         .select(`
@@ -51,7 +51,7 @@ export default function UnifiedDashboardPage() {
             sku
           )
         `)
-        .order('id', { ascending: false });
+        .order('created_at', { ascending: false });
       
       if (pData) {
         setProducts(pData);
@@ -132,7 +132,7 @@ export default function UnifiedDashboardPage() {
     fetchInitialData();
   }
 
-  // ✨ ฟังก์ชันสำหรับล้างประวัติเบิกจ่ายทั้งหมด
+  // ✨ แก้ไขจุดที่ 2: เปลี่ยนวิธีล้างประวัติใหม่ ไม่ให้ติดขัดเรื่องข้อมูลแบบ UUID
   async function handleClearHistory() {
     const confirmFirst = confirm("⚠️ น้าแน่ใจไหมครับที่จะล้างประวัติการเบิกและเพิ่มสินค้าทั้งหมด?\n(ข้อมูลประวัติการทำรายการจะหายหมด แต่ยอดสินค้าคงเหลือในคลังจะยังอยู่เหมือนเดิมครับ)");
     if (!confirmFirst) return;
@@ -141,16 +141,25 @@ export default function UnifiedDashboardPage() {
     if (!confirmSecond) return;
 
     try {
-      // ทำการลบข้อมูลทั้งหมดในตาราง stock_transactions
-      const { error } = await supabase.from('stock_transactions').delete().neq('id', 0); 
+      setLoading(true);
+      // ใช้เงื่อนไขสร้างการลบที่ปลอดภัยกับคอลัมน์วันเวลา ป้องกัน Error UUID ทับซ้อน
+      const { error } = await supabase
+        .from('stock_transactions')
+        .delete()
+        .not('created_at', 'is', null); 
+
       if (error) {
         alert(`❌ เกิดข้อผิดพลาด: ${error.message}`);
       } else {
         alert("🧹 ล้างประวัติการทำรายการสำเร็จเรียบร้อยแล้วครับน้า!");
-        fetchInitialData();
+        setTransactions([]); 
+        await fetchInitialData();
       }
     } catch (err) {
       console.error(err);
+      alert("❌ เกิดข้อผิดพลาดในการเชื่อมต่อระบบ");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -179,7 +188,7 @@ export default function UnifiedDashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 print:hidden">
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
           <div>
-            <p className="text-xs font-bold text-slate-4400 text-slate-400 uppercase tracking-wider">สินค้าทั้งหมดในสต็อก</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">สินค้าทั้งหมดในสต็อก</p>
             <p className="text-2xl font-extrabold text-slate-800 mt-1">{stats.total} <span className="text-xs font-normal text-slate-500">รายการ</span></p>
           </div>
           <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-lg">📦</div>
@@ -216,6 +225,7 @@ export default function UnifiedDashboardPage() {
         </div>
         <div className="flex gap-2 w-full md:w-auto print:hidden">
           <button 
+            type="button"
             onClick={() => { 
               if(products.length > 0) { 
                 setStockProductSearch(''); 
@@ -229,13 +239,13 @@ export default function UnifiedDashboardPage() {
           >
             🔄 รับ-จ่ายสต็อกด่วน
           </button>
-          <button onClick={() => openForm()} className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm">
+          <button type="button" onClick={() => openForm()} className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm">
             ➕ เพิ่มสินค้าใหม่
           </button>
         </div>
       </div>
 
-      {/* 📉 ZONE 3: พื้นที่หน้าหลักของ Dashboard */}
+      {/* 📋 ZONE 3: พื้นที่หน้าหลักของ Dashboard */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center flex flex-col items-center justify-center min-h-[180px] print:hidden">
         <div className="text-4xl mb-2">📊</div>
         <h3 className="text-base font-bold text-slate-700">ยินดีต้อนรับเข้าสู่ระบบ Sornun Stock</h3>
@@ -244,6 +254,7 @@ export default function UnifiedDashboardPage() {
         </p>
         {(stats.low > 0 || stats.out > 0) && (
           <button 
+            type="button"
             onClick={() => { setFilterType('ALL'); setShowOrderModal(true); }}
             className="mt-4 bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors shadow-sm"
           >
@@ -252,7 +263,7 @@ export default function UnifiedDashboardPage() {
         )}
       </div>
 
-      {/* 🟠 ✨ ZONE 4: ระบบประวัติเบิกจ่ายและเพิ่มอุปกรณ์ + ออกรายงาน PDF */}
+      {/* 📜 ZONE 4: ระบบประวัติเบิกจ่ายและเพิ่มอุปกรณ์ + ออกรายงาน PDF */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-4 overflow-visible print:border-none print:shadow-none print:p-0">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b pb-4">
           <div>
