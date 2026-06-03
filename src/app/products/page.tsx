@@ -51,7 +51,7 @@ export default function UnifiedDashboardPage() {
       if (pData) {
         setProducts(pData);
         const totalProducts = pData.length;
-        const lowStock = pData.filter(p => p.stock_quantity > 0 && p.stock_quantity <= 10).length;
+        const lowStock = pData.filter(p => p.stock_quantity > 0 && p.stock_quantity <= 25).length;
         const outOfStock = pData.filter(p => p.stock_quantity === 0).length;
         setStats({ total: totalProducts, low: lowStock, out: outOfStock });
       }
