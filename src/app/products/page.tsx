@@ -291,10 +291,10 @@ export default function UnifiedDashboardPage() {
             }} 
             className="flex-1 md:flex-none bg-slate-100 text-slate-700 hover:bg-slate-200 px-4 py-2.5 rounded-xl text-sm font-bold transition-all border border-slate-200"
           >
-            🔄 รับ-จ่ายสต็อกด่วน
+            รับ-จ่ายสต็อกด่วน
           </button>
           <button onClick={() => openForm()} className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm">
-            ➕ เพิ่มสินค้าใหม่
+            เพิ่มสินค้าใหม่
           </button>
         </div>
       </div>
