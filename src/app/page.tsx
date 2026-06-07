@@ -225,7 +225,7 @@ export default function UnifiedDashboardPage() {
       {/* 🏪 ZONE 2: HEADER CONTROL */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-slate-800 tracking-tight">Sornun Stock อัจฉริยะ</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-slate-800 tracking-tight">Sonun Stock อัจฉริยะ</h1>
           <p className="text-xs md:text-sm text-slate-500 mt-0.5">ระบบควบคุมคลังสินค้าและสรุปรายงานจัดซื้อส่วนตัวของคุณ Sornun</p>
         </div>
         <div className="flex gap-2 w-full md:w-auto print:hidden">
@@ -253,8 +253,8 @@ export default function UnifiedDashboardPage() {
       {/* 📋 ZONE 3: กล่องข้อความต้อนรับเดิมของน้า */}
       <div className="bg-gradient-to-br from-slate-800 to-slate-900 text-white rounded-2xl p-6 shadow-md flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:hidden">
         <div className="space-y-1">
-          <h2 className="text-lg font-bold flex items-center gap-2">👋 ยินดีต้อนรับกลับครับน้า!</h2>
-          <p className="text-slate-300 text-xs md:text-sm">ระบบคลังสินค้าพร้อมทำงานแล้ว น้าสามารถเลือกดูรายการแจ้งเตือนด้านบน หรือกดปุ่มจัดการสต็อกด่วนได้เลยครับ</p>
+          <h2 className="text-lg font-bold flex items-center gap-2">👋 Welcome!</h2>
+          <p className="text-slate-300 text-xs md:text-sm">ระบบคลังสินค้าพร้อมทำงานแล้ว สามารถเลือกดูรายการแจ้งเตือนด้านบน หรือกดปุ่มจัดการสต็อกด่วนได้เลยครับ</p>
         </div>
         {(stats.low > 0 || stats.out > 0) && (
           <button 
