@@ -103,9 +103,9 @@ export default function UnifiedDashboardPage() {
         price: product.price, 
         stock_quantity: product.stock_quantity, 
         image_url: product.image_url || '', 
-        supplier_name: product.supplier_name || '', 
-        supplier_link: product.supplier_link || '',
-        supplier_phone: product.supplier_phone || '' 
+        supplier_name: product.supplier_name || product.supplier || '', 
+        supplier_link: product.supplier_link || product.link || '',
+        supplier_phone: product.supplier_phone || product.phone || '' 
       });
     } else {
       setEditingId(null);
@@ -122,30 +122,46 @@ export default function UnifiedDashboardPage() {
   async function handleSaveProduct(e: React.FormEvent) {
     e.preventDefault();
 
+    // 🌟 แมปปิ้ง Payload เผื่อไว้ทั้ง 2 แบบ (แบบมี supplier_ นำหน้า และแบบไม่มี) เพื่อป้องกันปัญหายิงฐานข้อมูลไม่เข้า
     const payload = { 
       name: form.name,
       sku: form.sku,
       category_id: form.category_id ? Number(form.category_id) : null,
       price: Number(form.price) || 0,
       image_url: form.image_url,
+      
+      // ส่งไปทั้งสองรูปแบบ ป้องกันคอลัมน์ใน Supabase ตั้งชื่อต่างกัน
       supplier_name: form.supplier_name,
       supplier_link: form.supplier_link,
-      supplier_phone: form.supplier_phone 
+      supplier_phone: form.supplier_phone,
+      
+      supplier: form.supplier_name,
+      link: form.supplier_link,
+      phone: form.supplier_phone
     };
 
     try {
+      let resError = null;
+
       if (editingId) {
-        await supabase.from('products').update(payload).eq('id', editingId);
+        const { error } = await supabase.from('products').update(payload).eq('id', editingId);
+        resError = error;
       } else {
         const insertPayload = { ...payload, stock_quantity: Number(form.stock_quantity) || 0 };
-        await supabase.from('products').insert([insertPayload]).select();
+        const { error } = await supabase.from('products').insert([insertPayload]).select();
+        resError = error;
       }
       
+      if (resError) {
+        throw resError;
+      }
+
       setShowModal(false);
       fetchInitialData(); 
-    } catch (error) {
+    } catch (error: any) {
       console.error("เกิดข้อผิดพลาดในการบันทึกข้อมูล:", error);
-      alert("❌ ไม่สามารถบันทึกข้อมูลได้ กรุณาตรวจสอบคอลัมน์ในฐานข้อมูล Supabase ครับ");
+      // แสดงจุดที่พังออกมาให้เห็นทางหน้าต่าง Alert เพื่อให้แก้ไขที่ฐานข้อมูลได้ตรงจุด
+      alert(`❌ ไม่สามารถบันทึกข้อมูลได้!\nสาเหตุจาก Supabase: ${error.message || 'โครงสร้างคอลัมน์ไม่ตรงกับตารางในฐานข้อมูล'}\n\nกรุณาเช็คชื่อคอลัมน์ในตาราง products ว่าสะกดตรงกับในโค้ดหรือไม่ครับ`);
     }
   }
 
@@ -595,16 +611,16 @@ export default function UnifiedDashboardPage() {
                 <div className="space-y-1.5 text-sm font-medium">
                   <div className="flex justify-between">
                     <span className="text-slate-400">ชื่อร้านค้า:</span>
-                    <span className="text-slate-700 font-bold">{selectedProduct.supplier_name || 'ไม่ได้ระบุ'}</span>
+                    <span className="text-slate-700 font-bold">{selectedProduct.supplier_name || selectedProduct.supplier || 'ไม่ได้ระบุ'}</span>
                   </div>
                   
                   {/* ช่องแสดงเบอร์โทรศัพท์ (ถ้าไม่มีข้อมูลจะแสดงคำว่า "ไม่ได้ระบุ") */}
                   <div className="flex justify-between">
                     <span className="text-slate-400">เบอร์โทรศัพท์:</span>
                     <span className="text-blue-600 font-bold">
-                      {selectedProduct.supplier_phone ? (
-                        <a href={`tel:${selectedProduct.supplier_phone}`} className="hover:underline">
-                          📞 {selectedProduct.supplier_phone}
+                      {selectedProduct.supplier_phone || selectedProduct.phone ? (
+                        <a href={`tel:${selectedProduct.supplier_phone || selectedProduct.phone}`} className="hover:underline">
+                          📞 {selectedProduct.supplier_phone || selectedProduct.phone}
                         </a>
                       ) : (
                         <span className="text-slate-400 font-normal">ไม่ได้ระบุ</span>
@@ -614,250 +630,221 @@ export default function UnifiedDashboardPage() {
 
                   <div className="flex justify-between items-center">
                     <span className="text-slate-400">ลิงก์สั่งซื้อ/ติดต่อ:</span>
-                    {selectedProduct.supplier_link ? (
+                    {selectedProduct.supplier_link || selectedProduct.link ? (
                       <a 
-                        href={selectedProduct.supplier_link} 
+                        href={selectedProduct.supplier_link || selectedProduct.link} 
                         target="_blank" 
                         rel="noopener noreferrer" 
-                        className="text-blue-600 hover:text-blue-700 font-bold hover:underline text-xs flex items-center gap-0.5"
+                        className="text-blue-500 hover:text-blue-600 underline text-xs max-w-[200px] truncate"
                       >
-                        เปิดลิงก์ร้านค้า ↗
+                        🔗 เปิดลิงก์ไปยังร้านค้า
                       </a>
                     ) : (
-                      <span className="text-slate-400 font-normal">ไม่ได้ระบุ</span>
+                      <span className="text-slate-400 text-xs">ไม่ได้ระบุ</span>
                     )}
                   </div>
                 </div>
-              </div>
-
-              {/* ปุ่มปิดด้านล่าง */}
-              <div className="pt-2">
-                <button 
-                  onClick={() => setShowInfoModal(false)}
-                  className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition-all border border-slate-200"
-                >
-                  ปิดหน้าต่างรายละเอียด
-                </button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* 🟠 MODAL: ระบบรับเข้า-เบิกออกสินค้าด่วน */}
+      {/* 📦 MODAL: รับเข้า/เบิกจ่ายสต็อกด่วน */}
       {showStockModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-100 overflow-visible">
-            <h3 className="text-lg font-bold text-slate-800 border-b pb-3 mb-4">🔄 หน้าทำรายการ รับเข้า / เบิกจ่ายคลัง</h3>
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-100">
+            <h3 className="text-lg font-bold text-slate-800 border-b pb-3 mb-4">🔄 ทำรายการ รับเข้า / เบิกจ่ายสต็อกด่วน</h3>
             <form onSubmit={handleStockAdjust} className="space-y-4 text-slate-700 text-left">
+              
+              {/* ส่วนค้นหาตัวเลือกสินค้าด้วย Text */}
               <div className="relative">
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">เลือกหรือพิมพ์ค้นหาชิ้นส่วนสินค้า *</label>
-                <div 
-                  className="w-full border border-slate-200 bg-white rounded-xl p-2.5 text-sm flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all"
-                  onClick={() => setIsStockDropdownOpen(!isStockDropdownOpen)}
-                >
-                  <input 
-                    type="text"
-                    className="w-full bg-transparent outline-none font-medium text-slate-800 placeholder-slate-400"
-                    placeholder="🔍 พิมพ์ชื่อชิ้นส่วน หรือ รหัส SKU..."
-                    value={stockProductSearch}
-                    onChange={(e) => {
-                      setStockProductSearch(e.target.value);
-                      setIsStockDropdownOpen(true);
-                    }}
-                    onClick={(e) => e.stopPropagation()} 
-                  />
-                  <span className="text-slate-400 text-xs ml-2">🔽</span>
-                </div>
-
-                {selectedStockProductDetail && (
-                  <p className="text-xs font-bold text-blue-600 mt-1 bg-blue-50/70 px-2 py-1 rounded-lg inline-block">
-                    🎯 เลือกอยู่: [{selectedStockProductDetail.sku}] {selectedStockProductDetail.name} (คงเหลือ: {selectedStockProductDetail.stock_quantity} ชิ้น)
-                  </p>
-                )}
-
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">พิมพ์ค้นหาอุปกรณ์ *</label>
+                <input 
+                  type="text" 
+                  placeholder="🔍 พิมพ์ชื่อหรือ SKU เพื่อค้นหา..." 
+                  className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none font-medium"
+                  value={stockProductSearch}
+                  onChange={(e) => {
+                    setStockProductSearch(e.target.value);
+                    setIsStockDropdownOpen(true);
+                  }}
+                  onFocus={() => setIsStockDropdownOpen(true)}
+                />
+                
                 {isStockDropdownOpen && (
-                  <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto divide-y divide-slate-50">
-                    {filteredStockProducts.length > 0 ? (
-                      filteredStockProducts.map(p => (
-                        <div 
-                          key={p.id}
-                          className={`p-2.5 text-xs font-medium cursor-pointer transition-colors text-left flex justify-between items-center ${
-                            String(stockForm.product_id) === String(p.id) ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-700 hover:bg-slate-50'
-                          }`}
-                          onClick={() => {
-                            setStockForm({...stockForm, product_id: String(p.id)});
-                            setStockProductSearch('');
-                            setIsStockDropdownOpen(false);
-                          }}
-                        >
-                          <div>
-                            <span className="font-mono text-slate-400 block text-[10px]">SKU: {p.sku}</span>
-                            <span className="text-slate-900 font-bold text-sm block">{p.name}</span>
-                          </div>
-                          <span className={`px-2 py-0.5 rounded font-bold ${p.stock_quantity === 0 ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600'}`}>
-                            คลัง: {p.stock_quantity}
-                          </span>
+                  <div className="absolute z-10 w-full bg-white border border-slate-200 rounded-xl mt-1 max-h-48 overflow-y-auto shadow-lg divide-y divide-slate-50">
+                    {filteredStockProducts.map(p => (
+                      <div 
+                        key={p.id} 
+                        className="p-2.5 text-xs hover:bg-slate-50 cursor-pointer flex justify-between items-center font-medium"
+                        onClick={() => {
+                          setStockForm({...stockForm, product_id: String(p.id)});
+                          setStockProductSearch(`[${p.sku}] ${p.name}`);
+                          setIsStockDropdownOpen(false);
+                        }}
+                      >
+                        <div>
+                          <span className="text-slate-800 font-bold block">{p.name}</span>
+                          <span className="text-slate-400 font-mono">SKU: {p.sku}</span>
                         </div>
-                      ))
-                    ) : (
-                      <div className="p-4 text-center text-xs text-slate-400">❌ ไม่พบชื่อสินค้าอุปกรณ์ชิ้นนี้ในคลัง</div>
+                        <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 font-bold">คงเหลือ {p.stock_quantity}</span>
+                      </div>
+                    ))}
+                    {filteredStockProducts.length === 0 && (
+                      <div className="p-3 text-center text-xs text-slate-400">❌ ไม่พบข้อมูลอุปกรณ์นี้</div>
                     )}
                   </div>
                 )}
               </div>
+
+              {selectedStockProductDetail && (
+                <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3 text-xs space-y-1">
+                  <p className="text-blue-800 font-bold">🛒 รายการที่เลือกปฏิบัติการ:</p>
+                  <p className="text-slate-600 font-medium">ชื่อ: {selectedStockProductDetail.name}</p>
+                  <p className="text-slate-600 font-medium">ยอดปัจจุบันในระบบคลัง: <span className="font-bold text-slate-800">{selectedStockProductDetail.stock_quantity} ชิ้น</span></p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ประเภทธุรกรรม</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button 
                     type="button" 
-                    onClick={() => setStockForm({...stockForm, type: 'IN'})} 
-                    className={`py-2 rounded-xl text-sm font-bold transition-all border ${stockForm.type === 'IN' ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                    className={`p-2.5 rounded-xl text-sm font-bold transition-all ${stockForm.type === 'IN' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    onClick={() => setForm({...form})} // หลอก React trigger re-render
+                    onMouseDown={() => setStockForm({...stockForm, type: 'IN'})}
                   >
-                    📥 นำสินค้าเข้าคลัง
+                    📥 รับสินค้าเข้าคลัง
                   </button>
                   <button 
                     type="button" 
-                    onClick={() => setStockForm({...stockForm, type: 'OUT'})} 
-                    className={`py-2 rounded-xl text-sm font-bold transition-all border ${stockForm.type === 'OUT' ? 'bg-red-600 text-white border-red-600 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                    className={`p-2.5 rounded-xl text-sm font-bold transition-all ${stockForm.type === 'OUT' ? 'bg-red-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    onMouseDown={() => setStockForm({...stockForm, type: 'OUT'})}
                   >
-                    📤 เบิกสินค้าออกคลัง
+                    📤 เบิกจ่ายสินค้าออก
                   </button>
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">จำนวนอุปกรณ์ (ชิ้น) *</label>
-                <input 
-                  type="number" 
-                  min="1" 
-                  required 
-                  className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none font-bold text-slate-800" 
-                  value={stockForm.quantity} 
-                  onChange={e => setStockForm({...stockForm, quantity: Number(e.target.value) || 1})} 
-                />
+                <input type="number" min="1" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none font-bold" value={stockForm.quantity} onChange={e => setStockForm({...stockForm, quantity: Number(e.target.value)})} />
               </div>
 
               <div className="flex gap-2 justify-end pt-4 border-t mt-6">
                 <button type="button" onClick={() => setShowStockModal(false)} className="px-4 py-2 border rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50">ยกเลิก</button>
-                <button type="submit" className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-sm font-bold shadow-sm">ยืนยันบันทึกธุรกรรม</button>
+                <button type="submit" className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-sm font-bold shadow-sm">บันทึกธุรกรรม</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* 🛠️ MODAL: ระบบตรวจนับคลังสินค้าจริง (Stock Audit) */}
+      {/* 🔧 MODAL: ระบบตรวจนับสต็อกจริง (Stock Audit) */}
       {showAuditModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-100 overflow-visible">
-            <h3 className="text-lg font-bold text-slate-800 border-b pb-3 mb-4">🔍 ระบบตรวจนับสต็อกสินค้าจริงหน้างาน</h3>
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-100">
+            <h3 className="text-lg font-bold text-slate-800 border-b pb-3 mb-4">🔍 ปรับปรุงยอดจากการตรวจนับจริง (Audit)</h3>
             <form onSubmit={handleStockAuditSubmit} className="space-y-4 text-slate-700 text-left">
               
+              {/* ค้นหาสินค้าสำหรับ Audit */}
               <div className="relative">
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">เลือกอุปกรณ์ชิ้นส่วนที่เดินไปนับจริง *</label>
-                <div 
-                  className="w-full border border-slate-200 bg-white rounded-xl p-2.5 text-sm flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all"
-                  onClick={() => setIsAuditDropdownOpen(!isAuditDropdownOpen)}
-                >
-                  <input 
-                    type="text"
-                    className="w-full bg-transparent outline-none font-medium text-slate-800 placeholder-slate-400"
-                    placeholder="🔍 พิมพ์เพื่อค้นชื่อ หรือ ค้นด้วยรหัส SKU..."
-                    value={auditProductSearch}
-                    onChange={(e) => {
-                      setAuditProductSearch(e.target.value);
-                      setIsAuditDropdownOpen(true);
-                    }}
-                    onClick={(e) => e.stopPropagation()} 
-                  />
-                  <span className="text-slate-400 text-xs ml-2">🔽</span>
-                </div>
-
-                {selectedAuditProductDetail && (
-                  <div className="mt-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200/60 text-xs space-y-0.5">
-                    <p className="font-bold text-slate-800">🎯 กำลังเลือก: <span className="text-blue-600">[{selectedAuditProductDetail.sku}] {selectedAuditProductDetail.name}</span></p>
-                    <p className="text-slate-500">📊 ยอดคงเหลือคงค้างในแอปขณะนี้: <span className="font-bold text-slate-700">{selectedAuditProductDetail.stock_quantity} ชิ้น</span></p>
-                  </div>
-                )}
-
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">พิมพ์ชื่ออุปกรณ์เพื่อเริ่มนับคลัง *</label>
+                <input 
+                  type="text" 
+                  placeholder="🔍 ค้นชื่อหรือรหัสฮาร์ดแวร์..." 
+                  className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none font-medium"
+                  value={auditProductSearch}
+                  onChange={(e) => {
+                    setAuditProductSearch(e.target.value);
+                    setIsAuditDropdownOpen(true);
+                  }}
+                  onFocus={() => setIsAuditDropdownOpen(true)}
+                />
+                
                 {isAuditDropdownOpen && (
-                  <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto divide-y divide-slate-50">
-                    {filteredAuditProducts.length > 0 ? (
-                      filteredAuditProducts.map(p => (
-                        <div 
-                          key={p.id}
-                          className={`p-2.5 text-xs font-medium cursor-pointer transition-colors text-left flex justify-between items-center ${
-                            String(auditForm.product_id) === String(p.id) ? 'bg-amber-50 text-amber-700 font-bold' : 'text-slate-700 hover:bg-slate-50'
-                          }`}
-                          onClick={() => {
-                            setAuditForm({
-                              ...auditForm, 
-                              product_id: String(p.id),
-                              actual_quantity: p.stock_quantity 
-                            });
-                            setAuditProductSearch('');
-                            setIsAuditDropdownOpen(false);
-                          }}
-                        >
-                          <div>
-                            <span className="font-mono text-slate-400 block text-[10px]">SKU: {p.sku}</span>
-                            <span className="text-slate-900 font-bold block">{p.name}</span>
-                          </div>
-                          <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold">
-                            ในระบบ: {p.stock_quantity}
-                          </span>
+                  <div className="absolute z-10 w-full bg-white border border-slate-200 rounded-xl mt-1 max-h-48 overflow-y-auto shadow-lg divide-y divide-slate-50">
+                    {filteredAuditProducts.map(p => (
+                      <div 
+                        key={p.id} 
+                        className="p-2.5 text-xs hover:bg-slate-50 cursor-pointer flex justify-between items-center font-medium"
+                        onClick={() => {
+                          setAuditForm({...auditForm, product_id: String(p.id), actual_quantity: p.stock_quantity});
+                          setAuditProductSearch(`[${p.sku}] ${p.name}`);
+                          setIsAuditDropdownOpen(false);
+                        }}
+                      >
+                        <div>
+                          <span className="text-slate-800 font-bold block">{p.name}</span>
+                          <span className="text-slate-400 font-mono">SKU: {p.sku}</span>
                         </div>
-                      ))
-                    ) : (
-                      <div className="p-4 text-center text-xs text-slate-400">❌ ไม่พบสินค้าอุปกรณ์รายการนี้ในระบบคลัง</div>
+                        <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 font-bold">ในแอปมี: {p.stock_quantity}</span>
+                      </div>
+                    ))}
+                    {filteredAuditProducts.length === 0 && (
+                      <div className="p-3 text-center text-xs text-slate-400">❌ ไม่เจอรายการสินค้านี้</div>
                     )}
                   </div>
                 )}
               </div>
 
+              {selectedAuditProductDetail && (
+                <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 text-xs space-y-1.5">
+                  <p className="text-amber-800 font-bold">📋 ข้อมูลการเปรียบเทียบสต็อก:</p>
+                  <p className="text-slate-700 font-medium">📌 อุปกรณ์: <span className="font-bold">{selectedAuditProductDetail.name}</span></p>
+                  <p className="text-slate-600 font-medium">💻 ยอดคงเหลือในแอปพลิเคชัน: <span className="font-bold text-slate-900">{selectedAuditProductDetail.stock_quantity} ชิ้น</span></p>
+                  
+                  <div className="border-t border-amber-200/60 pt-1.5 mt-1.5 flex justify-between items-center text-sm">
+                    <span className="text-slate-600 font-bold">ผลต่างระบบคลัง:</span>
+                    <span className={`font-extrabold ${auditForm.actual_quantity - selectedAuditProductDetail.stock_quantity > 0 ? 'text-emerald-600' : auditForm.actual_quantity - selectedAuditProductDetail.stock_quantity < 0 ? 'text-red-600' : 'text-slate-500'}`}>
+                      {auditForm.actual_quantity - selectedAuditProductDetail.stock_quantity > 0 ? `เพิ่มขึ้น +${auditForm.actual_quantity - selectedAuditProductDetail.stock_quantity}` : auditForm.actual_quantity - selectedAuditProductDetail.stock_quantity < 0 ? `ลดลง ${auditForm.actual_quantity - selectedAuditProductDetail.stock_quantity}` : 'ยอดตรงกันเป๊ะ'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">จำนวนที่นับได้จริงหน้างาน (ชิ้น) *</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ยอดที่นับได้จริงที่หน้าชั้นวาง *</label>
                 <input 
                   type="number" 
-                  min="0"
-                  required 
-                  className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-amber-500/20" 
+                  min="0" 
+                  className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-base font-black text-slate-800 focus:bg-white transition-all outline-none" 
                   value={auditForm.actual_quantity} 
-                  onChange={e => setAuditForm({...auditForm, actual_quantity: Number(e.target.value) || 0})} 
+                  onChange={e => setAuditForm({...auditForm, actual_quantity: Number(e.target.value)})} 
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">เหตุผลหรือหมายเหตุความคลาดเคลื่อน *</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">เหตุผลในการอัปเดตปรับยอด</label>
                 <select 
-                  className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none bg-white font-medium mb-2" 
-                  value={auditForm.reason} 
+                  className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none bg-white font-medium"
+                  value={auditForm.reason}
                   onChange={e => setAuditForm({...auditForm, reason: e.target.value})}
                 >
-                  <option value="ปรับยอดจากการตรวจนับประจำงวด">📦 ปรับยอดจากการตรวจนับประจำงวด</option>
-                  <option value="พบเจอของตกหล่นในกล่องสำรอง">🔍 พบเจอของตกหล่นในกล่องสำรอง</option>
-                  <option value="หักลบของเสียหาย ชำรุด ไหม้ เสื่อมสภาพ">💥 หักลบของเสียหาย ชำรุด ไหม้ เสื่อมสภาพ</option>
-                  <option value="หยิบออกไปเทสงานพัฒนาบอร์ด/ไม่ได้ลงบันทึก">🔧 หยิบออกไปเทสงานพัฒนาบอร์ด/ไม่ได้ลงบันทึก</option>
-                  <option value="อื่นๆ">✏️ อื่นๆ (โปรดระบุเหตุผลเองด้านล่าง)</option>
+                  <option value="ปรับยอดจากการตรวจนับประจำงวด">📊 ปรับยอดจากการตรวจนับประจำงวด</option>
+                  <option value="พบเจอของตกหล่นในคลังเพิ่มเติม">📦 พบเจอของตกหล่นในคลังเพิ่มเติม</option>
+                  <option value="สินค้าชำรุด/สูญหายระหว่างจัดเก็บ">🚨 สินค้าชำรุด/สูญหายระหว่างจัดเก็บ</option>
+                  <option value="อื่นๆ">💡 อื่นๆ (ระบุเหตุผลเอง)</option>
                 </select>
+              </div>
 
-                {auditForm.reason === 'อื่นๆ' && (
-                  <input 
-                    type="text"
-                    required
-                    placeholder="กรุณาพิมพ์สาเหตุที่นับได้ไม่ตรงกับระบบ..."
-                    className="w-full border border-slate-200 bg-white rounded-xl p-2.5 text-sm outline-none font-medium text-slate-800 focus:ring-2 focus:ring-amber-500/20 animate-in fade-in-50 duration-150"
+              {auditForm.reason === 'อื่นๆ' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ระบุเหตุผลเพิ่มเติม *</label>
+                  <textarea 
+                    rows={2}
+                    placeholder="กรุณาพิมพ์หมายเหตุเพิ่มเติมตรงนี้ครับน้า..."
+                    className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none font-medium"
                     value={auditForm.other_reason}
                     onChange={e => setAuditForm({...auditForm, other_reason: e.target.value})}
                   />
-                )}
-              </div>
+                </div>
+              )}
 
               <div className="flex gap-2 justify-end pt-4 border-t mt-6">
                 <button type="button" onClick={() => setShowAuditModal(false)} className="px-4 py-2 border rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50">ยกเลิก</button>
-                <button type="submit" className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold shadow-sm">ส่งคำขอปรับยอดคลัง</button>
+                <button type="submit" className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold shadow-sm">ยืนยันปรับยอดนับจริง</button>
               </div>
             </form>
           </div>
