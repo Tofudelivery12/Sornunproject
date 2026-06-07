@@ -8,8 +8,8 @@ export default function UnifiedDashboardPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // สถิติสำหรับ Dashboard
-  const [stats, setStats] = useState({ total: 0, low: 0, out: 0 });
+  // สถิติสำหรับ Dashboard (เพิ่ม totalValue สำหรับคำนวณราคาทั้งคลัง)
+  const [stats, setStats] = useState({ total: 0, low: 0, out: 0, totalValue: 0 });
 
   // Modals State
   const [showModal, setShowModal] = useState(false);
@@ -23,11 +23,11 @@ export default function UnifiedDashboardPage() {
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
 
-  // ✨ State ใหม่: สำหรับพิมพ์ค้นหาชื่ออุปกรณ์ในหน้าต่าง รับเข้า/เบิกจ่าย สต็อกด่วน
+  // ✨ State สำหรับพิมพ์ค้นหาชื่ออุปกรณ์ในหน้าต่าง รับเข้า/เบิกจ่าย สต็อกด่วน
   const [stockProductSearch, setStockProductSearch] = useState('');
   const [isStockDropdownOpen, setIsStockDropdownOpen] = useState(false);
 
-  // 🛠️ ✨ [เพิ่มใหม่] State สำหรับระบบ ตรวจนับสต็อก (Stock Audit)
+  // 🛠️ ✨ State สำหรับระบบ ตรวจนับสต็อก (Stock Audit)
   const [showAuditModal, setShowAuditModal] = useState(false);
   const [auditProductSearch, setAuditProductSearch] = useState('');
   const [isAuditDropdownOpen, setIsAuditDropdownOpen] = useState(false);
@@ -51,10 +51,22 @@ export default function UnifiedDashboardPage() {
       if (pData) {
         setProducts(pData);
         const totalProducts = pData.length;
-        // 🎯 ปรับเงื่อนไขนับจำนวนสินค้าสต็อกใกล้หมดให้เป็น <= 25 แทน 10
         const lowStock = pData.filter(p => p.stock_quantity > 0 && p.stock_quantity <= 25).length;
         const outOfStock = pData.filter(p => p.stock_quantity === 0).length;
-        setStats({ total: totalProducts, low: lowStock, out: outOfStock });
+        
+        // 🛠️ คำนวณมูลค่ารวมทั้งคลัง (ราคาต่อหน่วย x จำนวนคงเหลือ ของสินค้าทุกชิ้นมารวมกัน)
+        const totalValueSum = pData.reduce((sum, p) => {
+          const price = Number(p.price) || 0;
+          const qty = Number(p.stock_quantity) || 0;
+          return sum + (price * qty);
+        }, 0);
+
+        setStats({ 
+          total: totalProducts, 
+          low: lowStock, 
+          out: outOfStock,
+          totalValue: totalValueSum 
+        });
       }
       if (cData) setCategories(cData);
     } catch (err) {
@@ -83,11 +95,9 @@ export default function UnifiedDashboardPage() {
   async function handleSaveProduct(e: React.FormEvent) {
     e.preventDefault();
     if (editingId) {
-      // กรณีแก้ไขข้อมูลสินค้าทั่วไป
       const payload = { ...form, category_id: form.category_id ? Number(form.category_id) : null };
       await supabase.from('products').update(payload).eq('id', editingId);
     } else {
-      // กรณีเพิ่มสินค้าใหม่
       const payload = { ...form, category_id: form.category_id ? Number(form.category_id) : null, stock_quantity: Number(form.stock_quantity) };
       await supabase.from('products').insert([payload]).select();
     }
@@ -129,7 +139,6 @@ export default function UnifiedDashboardPage() {
     fetchInitialData();
   }
 
-  // 🛠️ ✨ [เพิ่มใหม่] ฟังก์ชันสำหรับบันทึกการตรวจนับและปรับปรุงยอดคลังจริง (Stock Audit Submit)
   async function handleStockAuditSubmit(e: React.FormEvent) {
     e.preventDefault();
     const targetId = String(auditForm.product_id).trim();
@@ -161,7 +170,6 @@ export default function UnifiedDashboardPage() {
       return;
     }
 
-    // คำนวณ Type และค่ายอดต่าง
     const txType = diff > 0 ? 'ADJ_IN' : 'ADJ_OUT';
     const txQuantity = Math.abs(diff);
     const commentMessage = `🔧 [Audit] ยอดระบบเดิมคือ ${currentQty} ชิ้น ➡️ ปรับเป็นนับได้จริง ${actualQty} ชิ้น (เหตุผล: ${finalReason})`;
@@ -195,50 +203,52 @@ export default function UnifiedDashboardPage() {
     p.sku.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // ✨ กรองสินค้าในหน้าต่างสต็อกตามคำที่พิมพ์ค้นหา
   const filteredStockProducts = products.filter(p =>
     p.name.toLowerCase().includes(stockProductSearch.toLowerCase()) ||
     p.sku.toLowerCase().includes(stockProductSearch.toLowerCase())
   );
 
-  // 🛠️ ✨ [เพิ่มใหม่] กรองสินค้าในมอดอล Audit
   const filteredAuditProducts = products.filter(p =>
     p.name.toLowerCase().includes(auditProductSearch.toLowerCase()) ||
     p.sku.toLowerCase().includes(auditProductSearch.toLowerCase())
   );
 
-  // ✨ ค้นหาข้อมูลสินค้าตัวที่เลือกปัจจุบันเพื่อมาโชว์ในช่องกรอกข้อมูล
   const selectedStockProductDetail = products.find(p => String(p.id) === String(stockForm.product_id));
-
-  // 🛠️ ✨ [เพิ่มใหม่] ดึงข้อมูลสินค้าที่กำลังเลือกนับสต็อกอยู่ปัจจุบัน
   const selectedAuditProductDetail = products.find(p => String(p.id) === String(auditForm.product_id));
 
   return (
     <main className="py-6 space-y-6 max-w-6xl mx-auto px-2">
       
-      {/* 📊 ZONE 1: DASHBOARD CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* 📊 ZONE 1: DASHBOARD CARDS (อัปเดตเป็น 4 การ์ดเพื่อเพิ่มยอดรวมคลังสินค้า) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">สินค้าทั้งหมด</p>
-            <p className="text-2xl font-extrabold text-slate-800 mt-1">{stats.total} <span className="text-xs font-normal text-slate-500">รายการ</span></p>
+            <p className="text-xl md:text-2xl font-extrabold text-slate-800 mt-1">{stats.total} <span className="text-xs font-normal text-slate-500">รายการ</span></p>
           </div>
-          <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-lg">📦</div>
+          <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-lg hidden sm:flex">📦</div>
         </div>
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
           <div>
-            {/* 🎯 ปรับหัวการ์ดจาก (≤ 10) เป็น (≤ 25) */}
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">สต็อกใกล้หมด (≤ 25)</p>
-            <p className="text-2xl font-extrabold text-amber-600 mt-1">{stats.low} <span className="text-xs font-normal text-slate-500">รายการ</span></p>
+            <p className="text-xl md:text-2xl font-extrabold text-amber-600 mt-1">{stats.low} <span className="text-xs font-normal text-slate-500">รายการ</span></p>
           </div>
-          <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center text-lg">⚠️</div>
+          <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center text-lg hidden sm:flex">⚠️</div>
         </div>
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">สินค้าหมดคลัง (0)</p>
-            <p className="text-2xl font-extrabold text-red-600 mt-1">{stats.out} <span className="text-xs font-normal text-slate-500">รายการ</span></p>
+            <p className="text-xl md:text-2xl font-extrabold text-red-600 mt-1">{stats.out} <span className="text-xs font-normal text-slate-500">รายการ</span></p>
           </div>
-          <div className="w-10 h-10 bg-red-50 text-red-600 rounded-xl flex items-center justify-center text-lg">🚨</div>
+          <div className="w-10 h-10 bg-red-50 text-red-600 rounded-xl flex items-center justify-center text-lg hidden sm:flex">🚨</div>
+        </div>
+        {/* 🌟 การ์ดใบใหม่คำนวณมูลค่ารวมทั้งโกดังคลังสินค้า */}
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between col-span-2 md:col-span-1 bg-gradient-to-br from-white to-emerald-50/30">
+          <div>
+            <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider">มูลค่ารวมทั้งคลัง</p>
+            <p className="text-xl md:text-2xl font-extrabold text-emerald-600 mt-1">{stats.totalValue.toLocaleString()} <span className="text-xs font-normal text-slate-500">บ.</span></p>
+          </div>
+          <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center text-lg hidden sm:flex">💰</div>
         </div>
       </div>
 
@@ -249,7 +259,6 @@ export default function UnifiedDashboardPage() {
           <p className="text-xs md:text-sm text-slate-500 mt-0.5">ภาพรวมคลังอุปกรณ์อิเล็กทรอนิกส์และการควบคุมแบบ Real-time</p>
         </div>
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
-          {/* 🛠️ ✨ ปุ่มที่เพิ่มเข้ามาใหม่: เปิดมอดอล Audit คลังจริง */}
           <button
             onClick={() => {
               if (products.length > 0) {
@@ -273,7 +282,6 @@ export default function UnifiedDashboardPage() {
           <button 
             onClick={() => { 
               if(products.length > 0) { 
-                // ✨ รีเซ็ตค่าการค้นหาตอนเปิดมอดอลรับเข้า/เบิกออกสินค้า
                 setStockProductSearch('');
                 setStockForm({ product_id: String(products[0].id), type: 'IN', quantity: 1 }); 
                 setShowStockModal(true); 
@@ -312,12 +320,16 @@ export default function UnifiedDashboardPage() {
               <th className="p-4">หมวดหมู่</th>
               <th className="p-4">ราคาหน่วย</th>
               <th className="p-4">คงเหลือ</th>
+              <th className="p-4">มูลค่ารวม</th> {/* 🌟 เพิ่มหัวข้อตารางคูณราคา */}
               <th className="p-4 text-center">การจัดการ</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-slate-700">
             {filteredProducts.map((product) => {
               const matchedCat = categories.find(c => c.id === product.category_id);
+              // คำนวณมูลค่ารวมของสินค้าชิ้นนั้น ๆ (ราคา x จำนวนสต็อก)
+              const itemTotalValue = (Number(product.price) || 0) * (Number(product.stock_quantity) || 0);
+
               return (
                 <tr key={product.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="p-4 text-center">
@@ -339,14 +351,17 @@ export default function UnifiedDashboardPage() {
                   <td className="p-4">
                     <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs font-semibold">{matchedCat ? matchedCat.name : 'ทั่วไป'}</span>
                   </td>
-                  <td className="p-4 font-bold text-slate-800">{Number(product.price).toLocaleString()}.-</td>
+                  <td className="p-4 font-bold text-slate-600">{Number(product.price).toLocaleString()}.-</td>
                   <td className="p-4">
-                    {/* 🎯 ปรับเงื่อนไขสีป้ายแจ้งเตือนให้เปลี่ยนเป็นสีส้มถ้าต่ำกว่าหรือเท่ากับ 25 */}
                     <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
                       product.stock_quantity === 0 ? 'bg-red-50 text-red-600' : product.stock_quantity <= 25 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
                     }`}>
                       {product.stock_quantity} ชิ้น
                     </span>
+                  </td>
+                  {/* 🌟 ส่วนที่เพิ่มเข้ามา: แสดงผลยอดคูณราคาต่อหน่วย x จำนวนในสต็อก */}
+                  <td className="p-4 font-extrabold text-slate-800">
+                    {itemTotalValue.toLocaleString()} บาท
                   </td>
                   <td className="p-4 text-center space-x-2">
                     <button onClick={() => openForm(product)} className="text-blue-600 hover:bg-blue-50 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all">แก้ไข</button>
@@ -363,6 +378,8 @@ export default function UnifiedDashboardPage() {
       <div className="grid grid-cols-1 gap-3 md:hidden">
         {filteredProducts.map((product) => {
           const matchedCat = categories.find(c => c.id === product.category_id);
+          const itemTotalValue = (Number(product.price) || 0) * (Number(product.stock_quantity) || 0);
+
           return (
             <div key={product.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-3">
               <div className="flex gap-3 relative">
@@ -381,13 +398,25 @@ export default function UnifiedDashboardPage() {
                   <span className="font-mono text-xs text-slate-400 block">SKU: {product.sku}</span>
                 </div>
               </div>
-              <div className="flex justify-between items-center bg-slate-50 p-2 rounded-xl text-xs font-bold">
-                <div className="text-slate-600">ราคา: <span className="text-slate-800">{Number(product.price).toLocaleString()} บ.</span></div>
-                {/* 🎯 ปรับเงื่อนไขสีป้ายแจ้งเตือนของเวอร์ชันมือถือให้เป็น <= 25 เช่นกัน */}
-                <span className={`px-2 py-0.5 rounded ${product.stock_quantity === 0 ? 'bg-red-100 text-red-600' : product.stock_quantity <= 25 ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                  คลัง: {product.stock_quantity} ชิ้น
-                </span>
+              
+              {/* 🌟 ปรับปรุงส่วนแสดงข้อมูลเวอร์ชันมือถือให้โชว์ราคาคูณจำนวนคงเหลือด้วย */}
+              <div className="bg-slate-50 p-2.5 rounded-xl text-xs font-bold space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">ราคา/หน่วย:</span>
+                  <span className="text-slate-800">{Number(product.price).toLocaleString()} บ.</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">คงเหลือในคลัง:</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[11px] ${product.stock_quantity === 0 ? 'bg-red-100 text-red-600' : product.stock_quantity <= 25 ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                    {product.stock_quantity} ชิ้น
+                  </span>
+                </div>
+                <div className="flex justify-between border-t border-slate-200/60 pt-1 mt-1 text-sm">
+                  <span className="text-slate-600 font-bold">มูลค่าสต็อกรวม:</span>
+                  <span className="text-emerald-600 font-extrabold">{itemTotalValue.toLocaleString()} บ.</span>
+                </div>
               </div>
+
               <div className="flex gap-2 pt-1">
                 <button onClick={() => openForm(product)} className="flex-1 bg-blue-50 text-blue-600 font-bold text-xs py-2 rounded-xl border border-blue-100">แก้ไข</button>
                 <button onClick={() => handleDelete(product.id)} className="flex-1 bg-red-50 text-red-600 font-bold text-xs py-2 rounded-xl border border-red-100">ลบออก</button>
@@ -555,14 +584,13 @@ export default function UnifiedDashboardPage() {
         </div>
       )}
 
-      {/* 🛠️ ✨ [เพิ่มใหม่] MODAL: ระบบตรวจนับและปรับปรุงสต็อกสินค้าตามจริง (Stock Audit) */}
+      {/* 🛠️ ✨ MODAL: ระบบตรวจนับและปรับปรุงสต็อกสินค้าตามจริง (Stock Audit) */}
       {showAuditModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-100 overflow-visible">
             <h3 className="text-lg font-bold text-slate-800 border-b pb-3 mb-4">🔍 ตรวจนับและปรับปรุงยอดสต็อกคลังจริง</h3>
             <form onSubmit={handleStockAuditSubmit} className="space-y-4 text-slate-700 text-left">
               
-              {/* ส่วนค้นหาและเลือกสินค้าที่จะตรวจนับ */}
               <div className="relative">
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">พิมพ์ค้นหาอุปกรณ์ที่จะตรวจนับ *</label>
                 <div 
@@ -603,7 +631,7 @@ export default function UnifiedDashboardPage() {
                             setAuditForm({
                               ...auditForm, 
                               product_id: String(p.id),
-                              actual_quantity: p.stock_quantity // ดึงยอดเก่ามาตั้งต้นให้ใช้งานง่าย
+                              actual_quantity: p.stock_quantity 
                             });
                             setAuditProductSearch('');
                             setIsAuditDropdownOpen(false);
@@ -625,7 +653,6 @@ export default function UnifiedDashboardPage() {
                 )}
               </div>
 
-              {/* ช่องกรอกจำนวนที่นับได้จริง */}
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">จำนวนที่ตรวจนับได้จริงหน้างาน (ชิ้น) *</label>
                 <input 
@@ -638,7 +665,6 @@ export default function UnifiedDashboardPage() {
                 />
               </div>
 
-              {/* เหตุผลในการปรับปรุงยอด */}
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">เหตุผลหรือหมายเหตุในการปรับยอด *</label>
                 <select 
@@ -654,7 +680,6 @@ export default function UnifiedDashboardPage() {
                 </select>
               </div>
 
-              {/* ซ่อน/แสดงช่องกรอกเหตุผลอื่นๆ */}
               {auditForm.reason === 'อื่นๆ' && (
                 <div>
                   <label className="block text-xs font-bold text-amber-600 uppercase mb-1">โปรดระบุเหตุผลเพิ่มเติม *</label>
@@ -669,7 +694,6 @@ export default function UnifiedDashboardPage() {
                 </div>
               )}
 
-              {/* ปุ่มกดยืนยันมอดอล */}
               <div className="flex gap-2 justify-end pt-4 border-t mt-6">
                 <button 
                   type="button" 
@@ -739,6 +763,12 @@ export default function UnifiedDashboardPage() {
                 }`}>
                   {selectedProduct.stock_quantity === 0 ? 'สินค้าหมดคลัง' : selectedProduct.stock_quantity <= 25 ? 'สินค้าใกล้หมด' : 'สถานะปกติ'}
                 </span>
+              </div>
+
+              {/* 🌟 แสดงราคารวมในหน้ารายละเอียดเจาะลึก (Info) */}
+              <div className="bg-emerald-50/50 p-3 rounded-xl border border-emerald-100 flex justify-between items-center">
+                <span className="font-bold text-emerald-800 text-xs uppercase block">มูลค่าสต็อกสินค้ารายการนี้รวม:</span>
+                <span className="font-black text-emerald-700 text-base">{((Number(selectedProduct.price) || 0) * (Number(selectedProduct.stock_quantity) || 0)).toLocaleString()} บาท</span>
               </div>
 
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
