@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase'; // ใช้ Path เดิมข
 export default function UnifiedDashboardPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
-  const [transactions, setTransactions] = useState<any[]>([]); // ✨ State เก็บประวัติ
+  const [transactions, setTransactions] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
 
   // สถิติสำหรับ Dashboard
@@ -14,7 +14,12 @@ export default function UnifiedDashboardPage() {
   // Modals State
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState({ name: '', sku: '', category_id: '', price: 0, stock_quantity: 0, image_url: '', supplier_name: '', supplier_link: '' });
+  
+  // ✨ เพิ่ม `supplier_phone` ใน Form State เพื่อรองรับการเก็บเบอร์โทรศัพท์ร้านค้า
+  const [form, setForm] = useState({ 
+    name: '', sku: '', category_id: '', price: 0, stock_quantity: 0, 
+    image_url: '', supplier_name: '', supplier_link: '', supplier_phone: '' 
+  });
 
   const [showStockModal, setShowStockModal] = useState(false);
   const [stockForm, setStockForm] = useState({ product_id: '', type: 'IN', quantity: 1 });
@@ -37,7 +42,6 @@ export default function UnifiedDashboardPage() {
       const { data: pData } = await supabase.from('products').select('*').order('id', { ascending: false });
       const { data: cData } = await supabase.from('categories').select('*').order('name');
       
-      // ✨ แก้ไขจุดที่ 1: สั่งเรียงประวัติการทำรายการตาม 'created_at' จากใหม่ไปเก่า เพื่อไม่ให้สลับกันมั่วครับ
       const { data: tData } = await supabase
         .from('stock_transactions')
         .select(`
@@ -56,7 +60,6 @@ export default function UnifiedDashboardPage() {
       if (pData) {
         setProducts(pData);
         const totalProducts = pData.length;
-        // 🛠️ แก้ไขจุดที่ 1: ปรับเงื่อนไขสถิติด้านบนเป็นล็อตคงเหลือ <= 25 ชิ้นตามที่น้าตั้งใจ
         const lowStock = pData.filter(p => p.stock_quantity > 0 && p.stock_quantity <= 25).length;
         const outOfStock = pData.filter(p => p.stock_quantity === 0).length;
         setStats({ total: totalProducts, low: lowStock, out: outOfStock });
@@ -73,10 +76,16 @@ export default function UnifiedDashboardPage() {
   function openForm(product: any = null) {
     if (product) {
       setEditingId(product.id);
-      setForm({ name: product.name, sku: product.sku, category_id: product.category_id || '', price: product.price, stock_quantity: product.stock_quantity, image_url: product.image_url || '', supplier_name: product.supplier_name || '', supplier_link: product.supplier_link || '' });
+      // ✨ โหลดข้อมูล `supplier_phone` เข้าฟอร์มเมื่อกดแก้ไข
+      setForm({ 
+        name: product.name, sku: product.sku, category_id: product.category_id || '', 
+        price: product.price, stock_quantity: product.stock_quantity, 
+        image_url: product.image_url || '', supplier_name: product.supplier_name || '', 
+        supplier_link: product.supplier_link || '', supplier_phone: product.supplier_phone || '' 
+      });
     } else {
       setEditingId(null);
-      setForm({ name: '', sku: '', category_id: '', price: 0, stock_quantity: 0, image_url: '', supplier_name: '', supplier_link: '' });
+      setForm({ name: '', sku: '', category_id: '', price: 0, stock_quantity: 0, image_url: '', supplier_name: '', supplier_link: '', supplier_phone: '' });
     }
     setShowModal(true);
   }
@@ -162,13 +171,14 @@ export default function UnifiedDashboardPage() {
     window.print();
   }
 
-  // 🛠️ แก้ไขจุดที่ 2: ปรับปรุงเงื่อนไขกรองหน้ารายงาน (Modal) ให้ดักจับเลข <= 25 ให้สอดคล้องกันทั้งหมด
+  // ปรับปรุงเงื่อนไขกรองหน้ารายงาน (Modal)
   const reportProducts = products.filter(p => {
     if (filterType === 'OUT') return p.stock_quantity === 0;
     if (filterType === 'LOW') return p.stock_quantity > 0 && p.stock_quantity <= 25;
     return p.stock_quantity <= 25;
   });
 
+  // กรองสินค้าสำหรับ Dropdown ด่วน
   const filteredStockProducts = products.filter(p =>
     p.name.toLowerCase().includes(stockProductSearch.toLowerCase()) ||
     p.sku.toLowerCase().includes(stockProductSearch.toLowerCase())
@@ -189,7 +199,6 @@ export default function UnifiedDashboardPage() {
           <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-lg">📦</div>
         </div>
 
-        {/* 🛠️ แก้ไขจุดที่ 3: แก้ไขข้อความป้ายกำกับหัวการ์ดให้แสดงตัวเลข (≤ 25) สวยงามตรงความจริง */}
         <div 
           onClick={() => { setFilterType('LOW'); setShowOrderModal(true); }}
           className="bg-amber-50/60 p-5 rounded-2xl shadow-sm border border-amber-200 flex items-center justify-between cursor-pointer hover:bg-amber-100/70 transition-all"
@@ -241,20 +250,19 @@ export default function UnifiedDashboardPage() {
         </div>
       </div>
 
-      {/* 📋 ZONE 3: พื้นที่หน้าหลักของ Dashboard */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center flex flex-col items-center justify-center min-h-[180px] print:hidden">
-        <div className="text-4xl mb-2">📊</div>
-        <h3 className="text-base font-bold text-slate-700">ยินดีต้อนรับเข้าสู่ระบบ Sornun Stock</h3>
-        <p className="text-xs text-slate-400 max-w-sm mt-1 leading-relaxed">
-          หน้านี้แสดงสถิติสำคัญแบบองค์รวมเพื่อความเป็นระเบียบ หากต้องการจัดการ เพิ่ม ลบ หรือแก้ไขข้อมูล สามารถกดเลือกใช้งานได้จากแท็บเมนู <strong className="text-slate-600">"คลังสินค้า (CRUD)"</strong> ด้านบนได้เลยครับ
-        </p>
+      {/* 📋 ZONE 3: กล่องข้อความต้อนรับเดิมของน้า */}
+      <div className="bg-gradient-to-br from-slate-800 to-slate-900 text-white rounded-2xl p-6 shadow-md flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:hidden">
+        <div className="space-y-1">
+          <h2 className="text-lg font-bold flex items-center gap-2">👋 ยินดีต้อนรับกลับครับน้า!</h2>
+          <p className="text-slate-300 text-xs md:text-sm">ระบบคลังสินค้าพร้อมทำงานแล้ว น้าสามารถเลือกดูรายการแจ้งเตือนด้านบน หรือกดปุ่มจัดการสต็อกด่วนได้เลยครับ</p>
+        </div>
         {(stats.low > 0 || stats.out > 0) && (
           <button 
             type="button"
             onClick={() => { setFilterType('ALL'); setShowOrderModal(true); }}
-            className="mt-4 bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors shadow-sm"
+            className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-2 rounded-xl text-xs font-black transition-all shadow-md animate-bounce whitespace-nowrap"
           >
-            📋 เปิดดูสรุปรายการที่ต้องสั่งของทั้งหมด ({stats.low + stats.out} รายการ)
+            📋 ดูรายการที่ขาดคลังด่วน ({stats.low + stats.out} รายการ)
           </button>
         )}
       </div>
@@ -362,14 +370,13 @@ export default function UnifiedDashboardPage() {
         }
       `}</style>
 
-      {/* ป็อปอัป (Modal): รายงานจัดซื้อ */}
+      {/* 🛒 ป็อปอัป (Modal): รายงานจัดซื้อ (เพิ่มการแสดงผลเบอร์โทรศัพท์ตามที่น้าต้องการ) */}
       {showOrderModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 print:hidden">
           <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col border border-slate-100">
             <div className="p-5 border-b flex justify-between items-center bg-slate-50 rounded-t-2xl">
               <div>
                 <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">🛒 สรุปรายการอุปกรณ์ที่ต้องจัดซื้อเติมสต็อก</h3>
-                {/* 🛠️ แก้ไขจุดที่ 4: เปลี่ยนข้อความในป๊อปอัปรายงานแจ้งเตือนวิกฤตให้ตรงเลข 25 */}
                 <p className="text-xs text-slate-400 mt-0.5">แสดงรายชื่อสินค้าที่คงเหลือต่ำกว่าหรือเท่ากับ 25 ชิ้น</p>
               </div>
               <button onClick={() => setShowOrderModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold p-1">✕</button>
@@ -384,7 +391,7 @@ export default function UnifiedDashboardPage() {
                       <tr>
                         <th className="p-3">ชื่อชิ้นส่วน / SKU</th>
                         <th className="p-3 text-center">คงเหลือปัจจุบัน</th>
-                        <th className="p-3">ร้านค้า</th>
+                        <th className="p-3">ข้อมูลร้านค้า / ติดต่อสั่งซื้อ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -395,18 +402,32 @@ export default function UnifiedDashboardPage() {
                             <span className="font-mono text-[11px] text-slate-400">SKU: {item.sku}</span>
                           </td>
                           <td className="p-3 text-center">
-                            {/* 🛠️ แก้ไขจุดที่ 5: ปรับสีพื้นหลังแถบแจ้งเตือนในตารางป๊อปอัปให้แสดงสีส้มเตือนเมื่อต่ำกว่า 25 ชิ้น */}
                             <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${item.stock_quantity === 0 ? 'bg-red-50 text-red-600' : item.stock_quantity <= 25 ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-600'}`}>
                               {item.stock_quantity} ชิ้น
                             </span>
                           </td>
-                          <td className="p-3">
+                          <td className="p-3 space-y-1">
+                            {/* แสดงชื่อร้านค้า */}
+                            <div className="text-slate-800 font-bold text-xs">
+                              {item.supplier_name ? `🏪 ${item.supplier_name}` : 'ไม่ได้ระบุชื่อร้าน'}
+                            </div>
+                            
+                            {/* ✨ เพิ่มการแสดงผลเบอร์โทรศัพท์ในหน้ารายงานตรงนี้ */}
+                            {item.supplier_phone && (
+                              <div className="text-slate-600 text-xs font-medium flex items-center gap-1">
+                                📞 เบอร์โทร: <a href={`tel:${item.supplier_phone}`} className="text-slate-900 font-bold underline hover:text-blue-600">{item.supplier_phone}</a>
+                              </div>
+                            )}
+
+                            {/* แสดงลิงก์สั่งซื้อ */}
                             {item.supplier_link ? (
-                              <a href={item.supplier_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-800 hover:underline font-bold text-xs">
-                                🛒 {item.supplier_name || 'ลิงก์ไปสั่งซื้อของ'} <span className="text-[10px]">↗</span>
-                              </a>
+                              <div>
+                                <a href={item.supplier_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline font-bold text-[11px]">
+                                  🌐 ลิงก์ร้านค้า <span className="text-[9px]">↗</span>
+                                </a>
+                              </div>
                             ) : (
-                              <span className="text-slate-400 italic text-xs">{item.supplier_name ? `🏪 ${item.supplier_name}` : 'ไม่ได้ระบุข้อมูลร้าน'}</span>
+                              <div className="text-slate-400 italic text-[11px]">ไม่มีลิงก์เว็บไซต์</div>
                             )}
                           </td>
                         </tr>
@@ -423,7 +444,7 @@ export default function UnifiedDashboardPage() {
         </div>
       )}
 
-      {/* MODAL: เพิ่ม/แก้ไขสินค้า */}
+      {/* MODAL: เพิ่ม/แก้ไขสินค้า (เพิ่มกล่องรับข้อมูลเบอร์โทรศัพท์ร้านค้า) */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 print:hidden">
           <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 border border-slate-100">
@@ -460,16 +481,27 @@ export default function UnifiedDashboardPage() {
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ลิงก์ URL รูปภาพสินค้า</label>
                 <input type="url" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.image_url} onChange={e => setForm({...form, image_url: e.target.value})} placeholder="https://..." />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              
+              {/* ส่วนจัดการข้อมูลผู้จัดจำหน่าย (เพิ่มช่องกรอกเบอร์โทรศัพท์) */}
+              <div className="border-t pt-3 space-y-3">
+                <span className="text-xs font-extrabold text-blue-600 block">🏪 ข้อมูลร้านค้าผู้จัดจำหน่าย</span>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ชื่อผู้จัดจำหน่าย (Supplier)</label>
-                  <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.supplier_name} onChange={e => setForm({...form, supplier_name: e.target.value})} placeholder="เช่น บจก. บ้านหม้อ" />
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ชื่อร้านค้า (Supplier Name)</label>
+                  <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.supplier_name} onChange={e => setForm({...form, supplier_name: e.target.value})} placeholder="เช่น ร้านบ้านหม้ออิเล็กทรอนิกส์" />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ลิงก์ติดต่อร้านค้า</label>
-                  <input type="url" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.supplier_link} onChange={e => setForm({...form, supplier_link: e.target.value})} placeholder="https://..." />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* ✨ ช่องสำหรับกรอกเบอร์โทรศัพท์ร้านค้าเพิ่มเข้ามาใหม่ */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">เบอร์โทรศัพท์ร้านค้า</label>
+                    <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.supplier_phone} onChange={e => setForm({...form, supplier_phone: e.target.value})} placeholder="เช่น 02-123-4567" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ลิงก์ติดต่อร้านค้า (URL)</label>
+                    <input type="url" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.supplier_link} onChange={e => setForm({...form, supplier_link: e.target.value})} placeholder="https://shopee.co.th/..." />
+                  </div>
                 </div>
               </div>
+
               <div className="flex gap-2 justify-end pt-4 border-t mt-6">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 border rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50">ยกเลิก</button>
                 <button type="submit" className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-sm">บันทึกข้อมูล</button>
