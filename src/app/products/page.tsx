@@ -115,18 +115,35 @@ export default function UnifiedDashboardPage() {
 
   async function handleSaveProduct(e: React.FormEvent) {
     e.preventDefault();
-    // 🛡️ ป้องกัน Error หากฐานข้อมูล Supabase ยังไม่มีคอลัมน์ supplier_phone ให้ทำการถอดออกก่อนยิง API
-    const { supplier_phone, ...safeForm } = form;
 
-    if (editingId) {
-      const payload = { ...safeForm, category_id: form.category_id ? Number(form.category_id) : null };
-      await supabase.from('products').update(payload).eq('id', editingId);
-    } else {
-      const payload = { ...safeForm, category_id: form.category_id ? Number(form.category_id) : null, stock_quantity: Number(form.stock_quantity) };
-      await supabase.from('products').insert([payload]).select();
+    // ประกอบ Payload โดยรวม supplier_phone เข้าไปด้วยเรียบร้อยครับ
+    const payload = { 
+      name: form.name,
+      sku: form.sku,
+      category_id: form.category_id ? Number(form.category_id) : null,
+      price: Number(form.price) || 0,
+      image_url: form.image_url,
+      supplier_name: form.supplier_name,
+      supplier_link: form.supplier_link,
+      supplier_phone: form.supplier_phone // 📞 ส่งค่าเบอร์โทรศัพท์เข้าฐานข้อมูล Supabase
+    };
+
+    try {
+      if (editingId) {
+        // กรณีแก้ไขสินค้าเดิม
+        await supabase.from('products').update(payload).eq('id', editingId);
+      } else {
+        // กรณีเพิ่มสินค้าใหม่
+        const insertPayload = { ...payload, stock_quantity: Number(form.stock_quantity) || 0 };
+        await supabase.from('products').insert([insertPayload]).select();
+      }
+      
+      setShowModal(false);
+      fetchInitialData(); // รีเฟรชดึงข้อมูลล่าสุดมาแสดงผล
+    } catch (error) {
+      console.error("เกิดข้อผิดพลาดในการบันทึกข้อมูล:", error);
+      alert("❌ ไม่สามารถบันทึกข้อมูลได้ กรุณาตรวจสอบคอลัมน์ในฐานข้อมูล Supabase ครับ");
     }
-    setShowModal(false);
-    fetchInitialData();
   }
 
   async function handleDelete(id: number) {
