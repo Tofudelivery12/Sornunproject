@@ -8,13 +8,24 @@ export default function UnifiedDashboardPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // สถิติสำหรับ Dashboard (เพิ่ม totalValue สำหรับคำนวณราคาทั้งคลัง)
+  // สถิติสำหรับ Dashboard
   const [stats, setStats] = useState({ total: 0, low: 0, out: 0, totalValue: 0 });
 
   // Modals State
   const [showModal, setShowModal] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState({ name: '', sku: '', category_id: '', price: 0, stock_quantity: 0, image_url: '', supplier_name: '', supplier_link: '' });
+  const [editingId, setEditingId] = useState<number | null>(null); // ✨ ซ่อมจุดนี้ให้แล้วครับน้า ตัวแปรกลับมาแล้ว!
+  
+  const [form, setForm] = useState({ 
+    name: '', 
+    sku: '', 
+    category_id: '', 
+    price: 0, 
+    stock_quantity: 0, 
+    image_url: '', 
+    supplier_name: '', 
+    supplier_link: '',
+    supplier_phone: '' 
+  });
 
   const [showStockModal, setShowStockModal] = useState(false);
   const [stockForm, setStockForm] = useState({ product_id: '', type: 'IN', quantity: 1 });
@@ -23,11 +34,11 @@ export default function UnifiedDashboardPage() {
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
 
-  // ✨ State สำหรับพิมพ์ค้นหาชื่ออุปกรณ์ในหน้าต่าง รับเข้า/เบิกจ่าย สต็อกด่วน
+  // State สำหรับพิมพ์ค้นหาชื่ออุปกรณ์ในหน้าต่าง รับเข้า/เบิกจ่าย สต็อกด่วน
   const [stockProductSearch, setStockProductSearch] = useState('');
   const [isStockDropdownOpen, setIsStockDropdownOpen] = useState(false);
 
-  // 🛠️ ✨ State สำหรับระบบ ตรวจนับสต็อก (Stock Audit)
+  // State สำหรับระบบ ตรวจนับสต็อก (Stock Audit)
   const [showAuditModal, setShowAuditModal] = useState(false);
   const [auditProductSearch, setAuditProductSearch] = useState('');
   const [isAuditDropdownOpen, setIsAuditDropdownOpen] = useState(false);
@@ -54,7 +65,6 @@ export default function UnifiedDashboardPage() {
         const lowStock = pData.filter(p => p.stock_quantity > 0 && p.stock_quantity <= 25).length;
         const outOfStock = pData.filter(p => p.stock_quantity === 0).length;
         
-        // 🛠️ คำนวณมูลค่ารวมทั้งคลัง (ราคาต่อหน่วย x จำนวนคงเหลือ ของสินค้าทุกชิ้นมารวมกัน)
         const totalValueSum = pData.reduce((sum, p) => {
           const price = Number(p.price) || 0;
           const qty = Number(p.stock_quantity) || 0;
@@ -79,10 +89,20 @@ export default function UnifiedDashboardPage() {
   function openForm(product: any = null) {
     if (product) {
       setEditingId(product.id);
-      setForm({ name: product.name, sku: product.sku, category_id: product.category_id || '', price: product.price, stock_quantity: product.stock_quantity, image_url: product.image_url || '', supplier_name: product.supplier_name || '', supplier_link: product.supplier_link || '' });
+      setForm({ 
+        name: product.name, 
+        sku: product.sku, 
+        category_id: product.category_id || '', 
+        price: product.price, 
+        stock_quantity: product.stock_quantity, 
+        image_url: product.image_url || '', 
+        supplier_name: product.supplier_name || '', 
+        supplier_link: product.supplier_link || '',
+        supplier_phone: product.supplier_phone || '' 
+      });
     } else {
       setEditingId(null);
-      setForm({ name: '', sku: '', category_id: '', price: 0, stock_quantity: 0, image_url: '', supplier_name: '', supplier_link: '' });
+      setForm({ name: '', sku: '', category_id: '', price: 0, stock_quantity: 0, image_url: '', supplier_name: '', supplier_link: '', supplier_phone: '' });
     }
     setShowModal(true);
   }
@@ -219,7 +239,7 @@ export default function UnifiedDashboardPage() {
   return (
     <main className="py-6 space-y-6 max-w-6xl mx-auto px-2">
       
-      {/* 📊 ZONE 1: DASHBOARD CARDS (อัปเดตเป็น 4 การ์ดเพื่อเพิ่มยอดรวมคลังสินค้า) */}
+      {/* 📊 ZONE 1: DASHBOARD CARDS */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
           <div>
@@ -242,7 +262,6 @@ export default function UnifiedDashboardPage() {
           </div>
           <div className="w-10 h-10 bg-red-50 text-red-600 rounded-xl flex items-center justify-center text-lg hidden sm:flex">🚨</div>
         </div>
-        {/* 🌟 การ์ดใบใหม่คำนวณมูลค่ารวมทั้งโกดังคลังสินค้า */}
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between col-span-2 md:col-span-1 bg-gradient-to-br from-white to-emerald-50/30">
           <div>
             <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider">มูลค่ารวมทั้งคลัง</p>
@@ -291,10 +310,10 @@ export default function UnifiedDashboardPage() {
             }} 
             className="flex-1 md:flex-none bg-slate-100 text-slate-700 hover:bg-slate-200 px-4 py-2.5 rounded-xl text-sm font-bold transition-all border border-slate-200"
           >
-            รับ-จ่ายสต็อกด่วน
+            🔄 รับ-จ่ายสต็อกด่วน
           </button>
           <button onClick={() => openForm()} className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm">
-            เพิ่มสินค้าใหม่
+            ➕ เพิ่มสินค้าใหม่
           </button>
         </div>
       </div>
@@ -320,14 +339,13 @@ export default function UnifiedDashboardPage() {
               <th className="p-4">หมวดหมู่</th>
               <th className="p-4">ราคาหน่วย</th>
               <th className="p-4">คงเหลือ</th>
-              <th className="p-4">มูลค่ารวม</th> {/* 🌟 เพิ่มหัวข้อตารางคูณราคา */}
+              <th className="p-4">มูลค่ารวม</th>
               <th className="p-4 text-center">การจัดการ</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-slate-700">
             {filteredProducts.map((product) => {
               const matchedCat = categories.find(c => c.id === product.category_id);
-              // คำนวณมูลค่ารวมของสินค้าชิ้นนั้น ๆ (ราคา x จำนวนสต็อก)
               const itemTotalValue = (Number(product.price) || 0) * (Number(product.stock_quantity) || 0);
 
               return (
@@ -359,7 +377,6 @@ export default function UnifiedDashboardPage() {
                       {product.stock_quantity} ชิ้น
                     </span>
                   </td>
-                  {/* 🌟 ส่วนที่เพิ่มเข้ามา: แสดงผลยอดคูณราคาต่อหน่วย x จำนวนในสต็อก */}
                   <td className="p-4 font-extrabold text-slate-800">
                     {itemTotalValue.toLocaleString()} บาท
                   </td>
@@ -399,7 +416,6 @@ export default function UnifiedDashboardPage() {
                 </div>
               </div>
               
-              {/* 🌟 ปรับปรุงส่วนแสดงข้อมูลเวอร์ชันมือถือให้โชว์ราคาคูณจำนวนคงเหลือด้วย */}
               <div className="bg-slate-50 p-2.5 rounded-xl text-xs font-bold space-y-1">
                 <div className="flex justify-between">
                   <span className="text-slate-500">ราคา/หน่วย:</span>
@@ -471,16 +487,34 @@ export default function UnifiedDashboardPage() {
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ลิงก์ URL รูปภาพสินค้า</label>
                 <input type="url" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.image_url} onChange={e => setForm({...form, image_url: e.target.value})} placeholder="https://..." />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              
+              {/* ข้อมูลร้านค้าผู้จัดจำหน่าย */}
+              <div className="border-t border-slate-100 pt-4 space-y-4">
+                <p className="text-xs font-bold text-blue-600 uppercase tracking-wider">ข้อมูลผู้จัดจำหน่าย (Supplier Information)</p>
+                
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ชื่อผู้จัดจำหน่าย (Supplier)</label>
-                  <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.supplier_name} onChange={e => setForm({...form, supplier_name: e.target.value})} placeholder="เช่น บจก. บ้านหม้อ" />
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ชื่อผู้จัดจำหน่าย</label>
+                  <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.supplier_name} onChange={e => setForm({...form, supplier_name: e.target.value})} placeholder="เช่น บจก. บ้านหม้ออิเล็กทรอนิกส์" />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ลิงก์ติดต่อร้านค้า</label>
-                  <input type="url" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.supplier_link} onChange={e => setForm({...form, supplier_link: e.target.value})} placeholder="https://..." />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">เบอร์โทรศัพท์ติดต่อ</label>
+                    <input 
+                      type="tel" 
+                      className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" 
+                      value={form.supplier_phone} 
+                      onChange={e => setForm({...form, supplier_phone: e.target.value})} 
+                      placeholder="เช่น 02-123-4567 หรือ 0812345678" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ลิงก์ติดต่อร้านค้า / เว็บไซต์</label>
+                    <input type="url" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none" value={form.supplier_link} onChange={e => setForm({...form, supplier_link: e.target.value})} placeholder="https://..." />
+                  </div>
                 </div>
               </div>
+
               <div className="flex gap-2 justify-end pt-4 border-t mt-6">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 border rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50">ยกเลิก</button>
                 <button type="submit" className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-sm">บันทึกข้อมูล</button>
@@ -584,7 +618,7 @@ export default function UnifiedDashboardPage() {
         </div>
       )}
 
-      {/* 🛠️ ✨ MODAL: ระบบตรวจนับและปรับปรุงสต็อกสินค้าตามจริง (Stock Audit) */}
+      {/* 🛠️ MODAL: ระบบตรวจนับและปรับปรุงสต็อกสินค้าตามจริง (Stock Audit) */}
       {showAuditModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-100 overflow-visible">
@@ -765,26 +799,40 @@ export default function UnifiedDashboardPage() {
                 </span>
               </div>
 
-              {/* 🌟 แสดงราคารวมในหน้ารายละเอียดเจาะลึก (Info) */}
               <div className="bg-emerald-50/50 p-3 rounded-xl border border-emerald-100 flex justify-between items-center">
                 <span className="font-bold text-emerald-800 text-xs uppercase block">มูลค่าสต็อกสินค้ารายการนี้รวม:</span>
                 <span className="font-black text-emerald-700 text-base">{((Number(selectedProduct.price) || 0) * (Number(selectedProduct.stock_quantity) || 0)).toLocaleString()} บาท</span>
               </div>
 
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-2">
                 <span className="font-bold text-slate-400 text-[10px] uppercase block">ข้อมูลร้านค้า / ผู้จัดจำหน่าย (Supplier)</span>
-                <p className="font-bold text-slate-800">🏢 ชื่อร้าน: {selectedProduct.supplier_name || 'ไม่ได้ระบุไว้'}</p>
+                <p className="font-bold text-slate-800">🏢 ร้านค้า: {selectedProduct.supplier_name || 'ไม่ได้ระบุไว้'}</p>
+                
+                {selectedProduct.supplier_phone ? (
+                  <p className="font-bold text-slate-800 flex items-center gap-1">
+                    📞 เบอร์โทร: 
+                    <a 
+                      href={`tel:${selectedProduct.supplier_phone}`} 
+                      className="text-blue-600 hover:underline bg-white px-2 py-0.5 rounded border border-slate-200 text-xs shadow-sm"
+                    >
+                      {selectedProduct.supplier_phone} ↗
+                    </a>
+                  </p>
+                ) : (
+                  <p className="text-slate-400 text-xs">📞 เบอร์โทร: ไม่ได้ระบุไว้</p>
+                )}
+
                 {selectedProduct.supplier_link ? (
                   <a 
                     href={selectedProduct.supplier_link} 
                     target="_blank" 
                     rel="noopener noreferrer" 
-                    className="text-blue-600 font-bold hover:underline inline-flex items-center gap-1 text-xs pt-0.5"
+                    className="text-blue-600 font-bold hover:underline inline-flex items-center gap-1 text-xs pt-0.5 border-t w-full mt-1 border-slate-200/60"
                   >
                     🔗 คลิกเพื่อเปิดลิงก์สั่งซื้อ/ติดต่อร้านค้า ↗
                   </a>
                 ) : (
-                  <p className="text-slate-400 text-xs">🚫 ไม่มีข้อมูลลิงก์ติดต่อร้านค้า</p>
+                  <p className="text-slate-400 text-xs pt-1 border-t border-slate-200/60">🚫 ไม่มีข้อมูลลิงก์ติดต่อร้านค้า</p>
                 )}
               </div>
             </div>
