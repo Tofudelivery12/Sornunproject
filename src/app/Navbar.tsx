@@ -18,7 +18,7 @@ export default function Navbar() {
       <div className="max-w-6xl mx-auto px-4">
         <div className="flex justify-between items-center h-16">
           <div className="font-bold text-xl flex items-center gap-2 text-blue-400">
-            ⚡ Sornun_Stock
+            ⚡ Sonun_Stock
           </div>
           {/* Desktop Menu */}
           <div className="hidden md:flex space-x-2">
